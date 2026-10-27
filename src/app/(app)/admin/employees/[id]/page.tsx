@@ -8,7 +8,7 @@ import { MonthlySettingsEditor } from "@/components/admin/leave-balances-editor"
 import { PaySlipUpload } from "@/components/admin/pay-slip-upload";
 import { EntriesTable } from "@/components/entries/entries-table";
 import { MonthSelector } from "@/components/dashboard/month-selector";
-import { getMonthDates, getMonthRange } from "@/lib/date";
+import { getMonthDates, getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours, summarizeByWeek } from "@/lib/hours";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { WeekSummaryTable } from "@/components/dashboard/week-summary-table";
@@ -25,9 +25,9 @@ export default async function EmployeeDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
 
   const { start, end } = getMonthRange(year, month);
   const monthDates = getMonthDates(year, month);

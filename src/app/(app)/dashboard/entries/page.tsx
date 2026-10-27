@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/session";
 import { getEntriesInRange } from "@/lib/queries";
-import { getMonthDates, getMonthRange } from "@/lib/date";
+import { getMonthDates, getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { EntriesTable } from "@/components/entries/entries-table";
 import { sumHours } from "@/lib/hours";
@@ -14,9 +14,9 @@ export default async function EntriesPage({
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const params = await searchParams;
-  const now = new Date();
-  const year = params.year ? Number(params.year) : now.getFullYear();
-  const month = params.month ? Number(params.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = params.year ? Number(params.year) : now.year;
+  const month = params.month ? Number(params.month) : now.month;
 
   const profile = await getSessionProfile();
   if (!profile) redirect("/login");

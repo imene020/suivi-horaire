@@ -1,6 +1,6 @@
 "use client";
 
-import { getMonthGrid } from "@/lib/date";
+import { getMonthGrid, todayStr as getTodayStr } from "@/lib/date";
 import { DAY_TYPE_COLORS, MONTH_NAMES_FR } from "@/lib/constants";
 import { DayType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ interface MiniMonthProps {
 
 export function MiniMonth({ year, month, dayTypeByDate, markersByDate, onDayClick }: MiniMonthProps) {
   const weeks = getMonthGrid(year, month);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getTodayStr();
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">

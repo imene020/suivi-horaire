@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/session";
 import { getEntriesInRange, getAllEntriesInRange, listEmployees } from "@/lib/queries";
-import { getYearRange } from "@/lib/date";
+import { getYearRange, nowInAppTimeZone } from "@/lib/date";
 import { YearCalendar } from "@/components/calendar/year-calendar";
 import { DayMarker } from "@/components/calendar/mini-month";
 import { DAY_TYPE_LABELS, employeeColor } from "@/lib/constants";
@@ -14,7 +14,7 @@ export default async function EmployeeCalendarPage({
   searchParams: Promise<{ year?: string }>;
 }) {
   const sp = await searchParams;
-  const year = sp.year ? Number(sp.year) : new Date().getFullYear();
+  const year = sp.year ? Number(sp.year) : nowInAppTimeZone().year;
 
   const profile = await getSessionProfile();
   if (!profile) redirect("/login");

@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { listEmployees, getAllEntriesInRange } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardValue } from "@/components/ui/card";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { formatHours } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 
 export default async function ComptableOverviewPage() {
-  const now = new Date();
-  const { start, end } = getMonthRange(now.getFullYear(), now.getMonth());
+  const now = nowInAppTimeZone();
+  const { start, end } = getMonthRange(now.year, now.month);
 
   const [employees, monthEntries] = await Promise.all([
     listEmployees(),

@@ -1,44 +1,35 @@
 # Suivi Horaire — App RH
 
-Application web de suivi des heures de travail, congés et maladie, inspirée du fichier Excel `Administration - Suivi horaire`. Multi-employés, avec espace **Admin RH** et espace **Employé**.
+Application web de suivi des heures de travail, congés et maladie, inspirée du fichier Excel `Administration - Suivi horaire`. Trois espaces : **Admin RH**, **Employé** et **Comptable**.
 
 ## Stack
 
 - **Next.js 16** (App Router, Server Actions, TypeScript)
-- **Supabase** (Postgres + Auth) — base de données et authentification
-- **Tailwind CSS** — interface
+- **PostgreSQL sur Neon** (driver `@neondatabase/serverless`), requêtes SQL dans `src/lib/queries.ts`
+- Authentification maison : mots de passe hachés (scrypt), sessions en base (`sessions`)
+- **Tailwind CSS** — interface ; PWA installable
+- Emails via SMTP (nodemailer), OCR via Google Vision ou Tesseract.js
 
-## 1. Créer le projet Supabase
+## 1. Base de données
 
-1. Va sur [supabase.com](https://supabase.com) → crée un projet gratuit.
-2. Dans **SQL Editor**, colle et exécute le contenu de `supabase/schema.sql` (crée les tables et les règles de sécurité).
-3. Dans **Project Settings → API**, récupère :
-   - `Project URL`
-   - `anon public` key
-   - `service_role` key (⚠️ secrète, jamais côté client)
+1. Crée un projet sur [neon.tech](https://neon.tech) et récupère la chaîne de connexion *pooled*.
+2. **Nouvelle base** : exécute `schema.sql` dans l'éditeur SQL Neon.
+3. **Base existante** (mise à jour) : exécute `migrations/001_sync_schema.sql`. Elle est idempotente (on peut la relancer sans risque). Conseil : la tester d'abord sur une branche Neon.
 
-## 2. Configurer les variables d'environnement
+## 2. Variables d'environnement
 
-Crée un fichier `.env.local` à la racine du projet avec :
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-```
+Copie `.env.example` en `.env.local` et remplis au minimum `DATABASE_URL` (et `APP_URL` en production). Toutes les variables sont décrites dans `.env.example`.
 
 ## 3. Créer le premier compte Admin RH
 
-1. Dans Supabase → **Authentication → Users → Add user**, crée un utilisateur (email + mot de passe).
-2. Copie son `UID`.
-3. Dans **SQL Editor**, exécute :
-
-```sql
-insert into public.profiles (id, email, full_name, role, function_title)
-values ('<UID>', 'admin@example.com', 'Admin RH', 'admin', 'Responsable RH');
+```bash
+npm install
+DATABASE_URL="postgresql://..." node scripts/create-admin.mjs admin@example.com "Admin RH"
 ```
 
-Tu peux maintenant te connecter à l'app avec cet email/mot de passe → tu arrives sur `/admin`.
+Le mot de passe est demandé au clavier. Connecte-toi ensuite avec cet email : tu arrives sur `/admin`.
+
+En développement (`npm run dev`), des comptes démo sont aussi créés automatiquement : `admin@demo.com` / `admin123` et `employe@demo.com` / `employe123`.
 
 ## 4. Lancer en local
 
@@ -49,12 +40,37 @@ npm run dev
 
 Ouvre [http://localhost:3000](http://localhost:3000).
 
+## 5. Vérifications
+
+```bash
+npx tsc --noEmit   # types
+npx eslint src     # lint
+npm test           # tests unitaires (calcul des heures, congés, dates/fuseaux)
+npm run build      # build de production
+```
+
+Test d'intégration de la base (exécute le vrai code de `src/lib/queries.ts` contre un Postgres créé à partir de `schema.sql`) :
+
+```bash
+# ⚠️ La base indiquée est entièrement effacée : utiliser une base de test locale, jamais la production.
+TEST_DATABASE_URL=postgresql://postgres@localhost:5432/suivi_test npm test
+```
+
 ## Fonctionnalités
 
-- **Admin RH** : créer/gérer des employés, définir les objectifs d'heures hebdomadaires, les heures standard par jour de semaine, les soldes congé/maladie, consulter et corriger le suivi horaire de chaque employé.
-- **Employé** : saisir ses heures quotidiennes (Présentiel/Télétravail/Congé/Maladie/Férié/Repos), voir son résumé hebdomadaire (heures vs objectif 42h), voir ses soldes de congés/maladie.
-- Calcul automatique des heures : Congé/Maladie/Férié payé → heures standard du jour ; sinon Fin − Début − Pause.
+- **Employé** : pointage (arrivée, pause, départ, présentiel/télétravail), historique des heures, résumé hebdomadaire vs objectif, demandes de congé/maladie, tâches du jour, documents, calendrier, messagerie, réunions.
+- **Admin RH** : gestion des employés et des comptes, validation des congés, jours fériés/repos (import des fériés tunisiens), correction des heures, fiches de paie, réunions (comptes rendus, pièces jointes), annonces, import d'heures depuis CSV/Excel ou par photo de feuille papier (OCR, avec relecture avant validation).
+- **Comptable** : consultation des heures et des salaires.
+
+## Règles de calcul (`src/lib/hours.ts`, `src/lib/leaves.ts`)
+
+- Jour normal : heures = Fin − Début − Pause.
+- Congé / Maladie : heures standard du jour de la semaine de l'employé.
+- Férié payé : heures standard + heures réellement travaillées si l'employé a pointé.
+- Férié non payé / Repos : 0 heure payée ; les heures travaillées ces jours-là sont converties en jours de congé (heures ÷ heures standard du jour, 8 h si le jour n'en a pas).
+- Congés : droit mensuel fixe (non reportable) + jours de récupération − jours pris.
+- Toutes les dates « aujourd'hui » et les heures de pointage sont calculées dans le fuseau de l'entreprise (`Africa/Tunis` par défaut, voir `NEXT_PUBLIC_APP_TIME_ZONE`).
 
 ## Déploiement
 
-Déployable sur Netlify ou Vercel. Pense à renseigner les 3 variables d'environnement ci-dessus dans les paramètres du site déployé.
+Déployable sur Vercel. Renseigner les variables d'environnement de `.env.example` dans les paramètres du projet, et exécuter la migration SQL sur la base avant de déployer une nouvelle version qui en contient une.

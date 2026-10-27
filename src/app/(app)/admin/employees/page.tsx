@@ -1,11 +1,11 @@
 import { listEmployees, getAllEntriesInRange } from "@/lib/queries";
 import { EmployeesTable } from "@/components/admin/employees-table";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 
 export default async function AdminEmployeesPage() {
-  const now = new Date();
-  const { start, end } = getMonthRange(now.getFullYear(), now.getMonth());
+  const now = nowInAppTimeZone();
+  const { start, end } = getMonthRange(now.year, now.month);
 
   const [profiles, monthEntries] = await Promise.all([
     listEmployees(),

@@ -1,9 +1,10 @@
 import "server-only";
 import path from "path";
-import { sql, withSeed, toIso } from "./pg";
+import { sql, withSeed, toIso, toDateOnly, toDateOnlyOrNull, toHHMM } from "./pg";
 import { generateId, hashPassword, StoredProfile, DocumentRecord } from "./db";
 import { computeDayHours, NON_WORKING_DAY_TYPES } from "./hours";
 import { DEFAULT_WEEKDAY_HOURS, DEFAULT_WEEKLY_TARGET_HOURS } from "./constants";
+import { todayStr, nowHHMM } from "./date";
 import {
   Profile,
   TimeEntry,
@@ -37,6 +38,32 @@ async function sqlQ(strings: TemplateStringsArray, ...values: unknown[]): Promis
 async function pgdb() {
   await withSeed();
   return sql();
+}
+
+/**
+ * "($1, $2), ($3, $4), ..." pour un INSERT multi-lignes. Les paramètres ne sont pas
+ * typés explicitement : Postgres les déduit du type des colonnes cibles, ce qui
+ * fonctionne que les identifiants soient en `uuid` ou en `text`.
+ */
+function valuesPlaceholders(rowCount: number, colCount: number): string {
+  const rows: string[] = [];
+  for (let r = 0; r < rowCount; r++) {
+    const cols: string[] = [];
+    for (let c = 0; c < colCount; c++) cols.push(`$${r * colCount + c + 1}`);
+    rows.push(`(${cols.join(", ")})`);
+  }
+  return rows.join(", ");
+}
+
+async function insertMeetingParticipants(meetingId: string, profileIds: string[]): Promise<void> {
+  const ids = [...new Set(profileIds)].filter(Boolean);
+  if (ids.length === 0) return;
+  const dbq = await pgdb();
+  await dbq.query(
+    `INSERT INTO meeting_participants (meeting_id, profile_id) VALUES ${valuesPlaceholders(ids.length, 2)}
+     ON CONFLICT DO NOTHING`,
+    ids.flatMap((pid) => [meetingId, pid])
+  );
 }
 
 function stripPassword(p: StoredProfile): Profile {
@@ -222,7 +249,6 @@ export async function deleteProfile(id: string): Promise<void> {
   await dbq.query(`DELETE FROM documents WHERE profile_id = $1`, [id]);
   await dbq.query(`DELETE FROM messages WHERE $1 = ANY(participant_ids)`, [id]);
   await dbq.query(`DELETE FROM meeting_participants WHERE profile_id = $1`, [id]);
-  await dbq.query(`DELETE FROM message_reads WHERE profile_id = $1`, [id]);
   await dbq.query(`DELETE FROM ocr_drafts WHERE profile_id = $1`, [id]);
   await dbq.query(`DELETE FROM password_resets WHERE profile_id = $1`, [id]);
   await dbq.query(`DELETE FROM profiles WHERE id = $1`, [id]);
@@ -268,13 +294,13 @@ function mapTimeEntryRow(r: Row): TimeEntry {
   return {
     id: r.id,
     profile_id: r.profile_id,
-    entry_date: r.entry_date,
+    entry_date: toDateOnly(r.entry_date),
     day_type: r.day_type,
     work_mode: r.work_mode ?? null,
-    start_time: r.start_time ?? null,
-    end_time: r.end_time ?? null,
+    start_time: toHHMM(r.start_time),
+    end_time: toHHMM(r.end_time),
     break_minutes: Number(r.break_minutes ?? 0),
-    break_start: r.break_start ?? null,
+    break_start: toHHMM(r.break_start),
     hours: Number(r.hours ?? 0),
     tasks: r.tasks ?? null,
     remarks: r.remarks ?? null,
@@ -543,15 +569,6 @@ export async function deleteDocumentRecord(id: string): Promise<{ error?: string
   return rows.length ? {} : { error: "Document introuvable." };
 }
 
-function nowHHMM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 async function getWeekdayHours(profileId: string): Promise<WeekdayHours | null> {
   const rows = await sqlQ`SELECT weekday_hours FROM profiles WHERE id = ${profileId}`;
   return rows.length ? (rows[0].weekday_hours as WeekdayHours) ?? null : null;
@@ -589,11 +606,11 @@ export async function punchIn(
   return { entry };
 }
 
-/** Minutes elapsed since `from` (HH:MM) until now, never negative. */
+/** Minutes écoulées depuis `from` (HH:MM, heure de l'entreprise) jusqu'à maintenant, jamais négatif. */
 function minutesSince(from: string): number {
   const [h, m] = from.split(":").map(Number);
-  const d = new Date();
-  return Math.max(0, d.getHours() * 60 + d.getMinutes() - (h * 60 + (m || 0)));
+  const [nh, nm] = nowHHMM().split(":").map(Number);
+  return Math.max(0, nh * 60 + nm - (h * 60 + (m || 0)));
 }
 
 export async function startBreak(profileId: string): Promise<{ error?: string; entry?: TimeEntry }> {
@@ -668,7 +685,7 @@ function mapTaskRow(r: Row): EmployeeTask {
   return {
     id: r.id,
     profile_id: r.profile_id,
-    task_date: r.task_date,
+    task_date: toDateOnly(r.task_date),
     title: r.title,
     description: r.description ?? null,
     is_innovation: !!r.is_innovation,
@@ -730,8 +747,8 @@ function mapLeaveRequestRow(r: Row): LeaveRequest {
     id: r.id,
     profile_id: r.profile_id,
     leave_type: r.leave_type,
-    start_date: r.start_date,
-    end_date: r.end_date,
+    start_date: toDateOnly(r.start_date),
+    end_date: toDateOnly(r.end_date),
     comment: r.comment ?? null,
     status: r.status,
     admin_comment: r.admin_comment ?? null,
@@ -829,8 +846,8 @@ export async function createNotifications(profileIds: string[], input: Notificat
   const now = new Date().toISOString();
   await dbq.query(
     `INSERT INTO notifications (id, profile_id, type, title, body, link, read, created_at)
-     SELECT gen_random_uuid()::text, pid, $2, $3, $4, $5, false, $6 FROM unnest($1::text[]) AS pid`,
-    [ids, input.type, input.title, input.body ?? null, input.link ?? null, now]
+     VALUES ${valuesPlaceholders(ids.length, 8)}`,
+    ids.flatMap((pid) => [generateId(), pid, input.type, input.title, input.body ?? null, input.link ?? null, false, now])
   );
 }
 
@@ -932,11 +949,7 @@ export async function createMeeting(input: CreateMeetingInput): Promise<Meeting[
         ${input.meeting_link.trim() || null}, ${occ.start.toISOString()}, ${occ.end ? occ.end.toISOString() : null},
         ${input.created_by}, ${input.recurrence}, NULL, ${now}, ${now})`;
     if (input.participant_ids.length > 0) {
-      await dbq.query(
-        `INSERT INTO meeting_participants (meeting_id, profile_id)
-         SELECT $1, pid FROM unnest($2::text[]) AS pid`,
-        [id, input.participant_ids]
-      );
+      await insertMeetingParticipants(id, input.participant_ids);
     }
     created.push(mapMeetingRow({ id, title: input.title.trim(), description: input.description.trim() || null, location: input.location.trim() || null, meeting_link: input.meeting_link.trim() || null, start_at: occ.start.toISOString(), end_at: occ.end ? occ.end.toISOString() : null, created_by: input.created_by, recurrence: input.recurrence, minutes: null, created_at: now, updated_at: now }));
   }
@@ -962,11 +975,7 @@ export async function updateMeeting(
     WHERE id = ${id}`;
   await dbq`DELETE FROM meeting_participants WHERE meeting_id = ${id}`;
   if (input.participant_ids.length > 0) {
-    await dbq.query(
-      `INSERT INTO meeting_participants (meeting_id, profile_id)
-       SELECT $1, pid FROM unnest($2::text[]) AS pid`,
-      [id, input.participant_ids]
-    );
+    await insertMeetingParticipants(id, input.participant_ids);
   }
   return {};
 }
@@ -1178,13 +1187,38 @@ export interface HistoricalHourRow {
   remarks: string | null;
 }
 
+/**
+ * Vrai si la ligne d'import a déjà été appliquée à cette journée : l'entrée existante
+ * provient d'un import et porte exactement le même type de jour, les mêmes heures de
+ * début/fin et la même pause. Sert à éviter qu'un même fichier importé deux fois
+ * double les heures (et donc les salaires).
+ */
+export function isAlreadyImported(
+  existing: TimeEntry | null,
+  row: Pick<HistoricalHourRow, "day_type" | "start_time" | "end_time" | "break_minutes">
+): boolean {
+  if (!existing?.imported) return false;
+  return (
+    existing.day_type === row.day_type &&
+    toHHMM(existing.start_time) === toHHMM(row.start_time) &&
+    toHHMM(existing.end_time) === toHHMM(row.end_time) &&
+    existing.break_minutes === (row.break_minutes || 0)
+  );
+}
+
 /** Insère en masse des entrées de temps historiques (import CSV) en ADDITIONNANT
  * les heures à l'entrée existante du même jour. Les autres champs (type de jour,
- * début/fin, pause, tâches, remarques) sont mis à jour avec la nouvelle ligne. */
-export async function bulkImportTimeEntries(rows: HistoricalHourRow[]): Promise<number> {
+ * début/fin, pause, tâches, remarques) sont mis à jour avec la nouvelle ligne.
+ * Les lignes déjà importées à l'identique sont ignorées (voir isAlreadyImported). */
+export async function bulkImportTimeEntries(rows: HistoricalHourRow[]): Promise<{ imported: number; skipped: number }> {
   let count = 0;
+  let skipped = 0;
   for (const r of rows) {
     const existing = await readTimeEntry(r.profile_id, r.entry_date);
+    if (isAlreadyImported(existing, r)) {
+      skipped++;
+      continue;
+    }
     const mergedHours = (existing?.hours ?? 0) + r.hours;
     await writeTimeEntry(r.profile_id, r.entry_date, {
       day_type: r.day_type,
@@ -1199,7 +1233,7 @@ export async function bulkImportTimeEntries(rows: HistoricalHourRow[]): Promise<
     });
     count++;
   }
-  return count;
+  return { imported: count, skipped };
 }
 
 export interface ImportedEntryRow extends TimeEntry {
@@ -1225,9 +1259,9 @@ function mapOcrDraftRow(r: Row): OcrDraftRow {
     document_id: r.document_id ?? null,
     profile_id: r.profile_id ?? null,
     full_name: r.full_name ?? null,
-    entry_date: r.entry_date ?? null,
-    start_time: r.start_time ?? null,
-    end_time: r.end_time ?? null,
+    entry_date: toDateOnlyOrNull(r.entry_date),
+    start_time: toHHMM(r.start_time),
+    end_time: toHHMM(r.end_time),
     break_minutes: Number(r.break_minutes ?? 0),
     hours: Number(r.hours ?? 0),
     raw_line: r.raw_line ?? "",

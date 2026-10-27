@@ -48,6 +48,25 @@ export async function signOut() {
   redirect("/login");
 }
 
+/**
+ * URL publique de l'application, utilisée dans les liens envoyés par email.
+ * Elle ne doit PAS venir de l'en-tête Host de la requête : un attaquant pourrait
+ * demander une réinitialisation pour la victime avec un Host forgé, et la victime
+ * recevrait un vrai email contenant un vrai jeton... pointant vers le site de
+ * l'attaquant. Ordre : APP_URL, puis l'URL de production fournie par Vercel, puis
+ * (en développement uniquement) l'en-tête Host.
+ */
+async function getAppBaseUrl(): Promise<string | null> {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.NODE_ENV === "development") {
+    const host = (await headers()).get("host");
+    return host ? `http://${host}` : null;
+  }
+  return null;
+}
+
 /** Toujours le même message générique, pour ne pas révéler si un email existe. */
 const RESET_REQUEST_GENERIC_MESSAGE =
   "Si un compte existe avec cet email, un lien de réinitialisation vient de lui être envoyé.";
@@ -70,12 +89,13 @@ export async function requestPasswordReset(_prevState: { message: string; error?
 
   const profile = await findProfileByEmail(email);
   if (profile && profile.active) {
-    const token = await createPasswordReset(profile.id);
-    const hdrs = await headers();
-    const host = hdrs.get("host");
-    const proto = hdrs.get("x-forwarded-proto") ?? "http";
-    const resetUrl = `${proto}://${host}/reset-password/${token}`;
-    await sendPasswordResetEmail(profile, resetUrl);
+    const baseUrl = await getAppBaseUrl();
+    if (!baseUrl) {
+      console.error("[reset-password] APP_URL non configurée : lien de réinitialisation non envoyé.");
+    } else {
+      const token = await createPasswordReset(profile.id);
+      await sendPasswordResetEmail(profile, `${baseUrl}/reset-password/${token}`);
+    }
   }
 
   // Réponse identique que le compte existe ou non (anti-énumération d'emails).

@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { listEmployees, getAllEntriesInRange, countPendingLeaveRequests } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardValue } from "@/components/ui/card";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { formatHours } from "@/lib/utils";
 import { ArrowRight, Inbox } from "lucide-react";
 
 export default async function AdminOverviewPage() {
-  const now = new Date();
-  const { start, end } = getMonthRange(now.getFullYear(), now.getMonth());
+  const now = nowInAppTimeZone();
+  const { start, end } = getMonthRange(now.year, now.month);
 
   const [employees, monthEntries, pendingRequests] = await Promise.all([
     listEmployees(),
@@ -18,7 +18,7 @@ export default async function AdminOverviewPage() {
   const totalHours = sumHours(monthEntries);
   const activeCount = employees.filter((e) => e.active).length;
   const onLeaveToday = monthEntries.filter(
-    (e) => e.entry_date === now.toISOString().slice(0, 10) && (e.day_type === "conge" || e.day_type === "maladie")
+    (e) => e.entry_date === now.date && (e.day_type === "conge" || e.day_type === "maladie")
   ).length;
 
   return (

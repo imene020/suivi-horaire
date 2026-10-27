@@ -9,6 +9,7 @@ import { TimeEntry, WorkMode } from "@/lib/types";
 import { DAY_TYPE_LABELS } from "@/lib/constants";
 import { NON_WORKING_DAY_TYPES } from "@/lib/hours";
 import { cn } from "@/lib/utils";
+import { APP_TIME_ZONE } from "@/lib/date";
 import {
   punchInAction,
   punchOutAction,
@@ -100,7 +101,7 @@ export function PunchClock({ todayEntry }: { todayEntry: TimeEntry | null }) {
             </div>
             <div>
               <p className="text-sm font-medium text-slate-900">
-                {now?.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) ?? "--:--"}
+                {now?.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: APP_TIME_ZONE }) ?? "--:--"}
               </p>
               <p className="text-xs text-slate-500">{status}</p>
             </div>

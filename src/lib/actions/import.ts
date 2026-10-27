@@ -3,13 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/session";
 import { parseHoursCsv, parseHoursXlsx, CsvParseResult } from "@/lib/csv-import";
-import { findProfileByEmail, findProfileById, listEmployees, bulkImportTimeEntries, getEntryByDate, HistoricalHourRow } from "@/lib/queries";
+import {
+  findProfileByEmail,
+  findProfileById,
+  listEmployees,
+  bulkImportTimeEntries,
+  getEntryByDate,
+  isAlreadyImported,
+  HistoricalHourRow,
+} from "@/lib/queries";
 import { DayType, WorkMode } from "@/lib/types";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 
 export interface ImportSummary {
   imported: number;
+  /** Lignes ignorées car déjà importées à l'identique (même fichier importé deux fois). */
+  skipped: number;
   errors: string[];
 }
 
@@ -36,6 +46,8 @@ export interface ImportPreviewRow {
   existing_hours: number;
   /** Total après ajout (existing_hours + hours). */
   total_hours: number;
+  /** Ligne déjà importée à l'identique pour ce jour : elle sera ignorée à la confirmation. */
+  already_imported: boolean;
   tasks: string | null;
   remarks: string | null;
 }
@@ -172,7 +184,8 @@ export async function analyzeImportAction(
 
     const existing = profile ? await getEntryByDate(profile.id, row.entry_date) : null;
     const existing_hours = existing?.hours ?? 0;
-    const total_hours = existing_hours + row.hours;
+    const already_imported = isAlreadyImported(existing, row);
+    const total_hours = already_imported ? existing_hours : existing_hours + row.hours;
 
     preview.push({
       line: row.line,
@@ -189,6 +202,7 @@ export async function analyzeImportAction(
       hours: row.hours,
       existing_hours,
       total_hours,
+      already_imported,
       tasks: row.tasks,
       remarks: row.remarks,
     });
@@ -227,11 +241,11 @@ export async function confirmImportAction(
     remarks: row.remarks,
   }));
 
-  const imported = await bulkImportTimeEntries(toImport);
+  const { imported, skipped } = await bulkImportTimeEntries(toImport);
 
   revalidatePath("/dashboard");
   revalidatePath("/admin/employees");
   revalidatePath("/admin/salaries");
 
-  return { success: true, imported, errors: [] };
+  return { success: true, imported, skipped, errors: [] };
 }

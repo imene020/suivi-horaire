@@ -1,5 +1,6 @@
 import { DayType, TimeEntry, WeekdayHours } from "./types";
 import { DEFAULT_WEEKDAY_HOURS } from "./constants";
+import { toDateStr } from "./date";
 
 /** Types de journée où les heures sont automatiquement égales aux heures standard du jour */
 const AUTO_STANDARD_TYPES: DayType[] = ["conge", "maladie"];
@@ -58,7 +59,7 @@ export function getWeekStart(date: Date): Date {
 
 export function getISOWeekKey(dateStr: string): string {
   const weekStart = getWeekStart(new Date(dateStr + "T00:00:00"));
-  return weekStart.toISOString().slice(0, 10);
+  return toDateStr(weekStart);
 }
 
 export interface WeekSummary {

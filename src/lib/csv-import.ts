@@ -385,8 +385,8 @@ function parseSuiviHoraireTemplate(sheet: ExcelJS.Worksheet): CsvParseResult | n
       let day: number | null;
       let month: string;
       if (dateCellValue instanceof Date) {
-        day = dateCellValue.getDate();
-        month = pad2(dateCellValue.getMonth() + 1);
+        day = dateCellValue.getUTCDate();
+        month = pad2(dateCellValue.getUTCMonth() + 1);
       } else {
         day = extractDayOfMonth(dateRaw);
         month = monthInfo.month;
@@ -446,20 +446,16 @@ function parseSuiviHoraireTemplate(sheet: ExcelJS.Worksheet): CsvParseResult | n
 function cellToText(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) {
-    // Les cellules "heure seule" d'Excel (ex. Début/Fin/Pause) sont ancrées sur la date
-    // pivot 1899-12-30 et stockées en UTC sans aucune signification de fuseau horaire.
-    // Les lire avec les getters locaux introduit un décalage parasite de quelques minutes
-    // pour ces dates antérieures à 1900 (règle d'heure locale moyenne historique appliquée
-    // par certains fuseaux, ex. +9 min) : on utilise donc les composants UTC pour ce cas
-    // précis, et les composants locaux pour les vraies dates calendaires (comportement
-    // inchangé, cf. commentaire de parseHoursXlsx).
-    const isExcelTimeAnchor = value.getUTCFullYear() === 1899;
-    const y = isExcelTimeAnchor ? value.getUTCFullYear() : value.getFullYear();
-    const mo = isExcelTimeAnchor ? value.getUTCMonth() : value.getMonth();
-    const d = isExcelTimeAnchor ? value.getUTCDate() : value.getDate();
-    const h = isExcelTimeAnchor ? value.getUTCHours() : value.getHours();
-    const mi = isExcelTimeAnchor ? value.getUTCMinutes() : value.getMinutes();
-    const s = isExcelTimeAnchor ? value.getUTCSeconds() : value.getSeconds();
+    // ExcelJS renvoie les dates/heures Excel comme heure "murale" encodée en UTC
+    // (une cellule "01/10/2026 08:00" devient 2026-10-01T08:00:00Z). On lit donc
+    // toujours les composants UTC : les getters locaux donnaient le bon résultat
+    // uniquement sur un serveur en UTC (ex. 09:00 au lieu de 08:00 en Tunisie).
+    const y = value.getUTCFullYear();
+    const mo = value.getUTCMonth();
+    const d = value.getUTCDate();
+    const h = value.getUTCHours();
+    const mi = value.getUTCMinutes();
+    const s = value.getUTCSeconds();
     return `${y}-${pad2(mo + 1)}-${pad2(d)}T${pad2(h)}:${pad2(mi)}:${pad2(s)}`;
   }
   if (typeof value === "object") {

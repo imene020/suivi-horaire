@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { Lightbulb } from "lucide-react";
 import { listEmployees, listAllTasks } from "@/lib/queries";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { EmployeeFilter } from "@/components/admin/employee-filter";
 import { TaskList } from "@/components/tasks/task-list";
@@ -13,9 +13,9 @@ export default async function AdminTasksPage({
   searchParams: Promise<{ year?: string; month?: string; employee?: string; innovation?: string }>;
 }) {
   const sp = await searchParams;
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
   const { start, end } = getMonthRange(year, month);
 
   const [employees, allTasks] = await Promise.all([listEmployees(), listAllTasks(start, end)]);

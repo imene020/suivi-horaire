@@ -1,5 +1,5 @@
 import { listEmployees, getAllEntriesInRange } from "@/lib/queries";
-import { getYearRange, getDatesBetween } from "@/lib/date";
+import { getYearRange, getDatesBetween, nowInAppTimeZone } from "@/lib/date";
 import { AdminYearCalendar } from "@/components/admin/admin-year-calendar";
 import { ImportHolidaysButton } from "@/components/admin/import-holidays-button";
 import { DayMarker } from "@/components/calendar/mini-month";
@@ -16,7 +16,7 @@ export default async function AdminCalendarPage({
   searchParams: Promise<{ year?: string }>;
 }) {
   const sp = await searchParams;
-  const year = sp.year ? Number(sp.year) : new Date().getFullYear();
+  const year = sp.year ? Number(sp.year) : nowInAppTimeZone().year;
   const { start, end } = getYearRange(year);
 
   const [allEmployees, entries] = await Promise.all([listEmployees(), getAllEntriesInRange(start, end)]);

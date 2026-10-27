@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { listEmployees, getAllEntriesInRange } from "@/lib/queries";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { formatHours } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
 export default async function ComptableEmployeesPage() {
-  const now = new Date();
-  const { start, end } = getMonthRange(now.getFullYear(), now.getMonth());
+  const now = nowInAppTimeZone();
+  const { start, end } = getMonthRange(now.year, now.month);
   const [profiles, monthEntries] = await Promise.all([
     listEmployees(),
     getAllEntriesInRange(start, end),

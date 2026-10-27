@@ -2,7 +2,7 @@ import Link from "next/link";
 import { listEmployees, getAllEntriesInRange, countDocumentsByProfiles } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardValue } from "@/components/ui/card";
 import { MonthSelector } from "@/components/dashboard/month-selector";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { MONTH_NAMES_FR } from "@/lib/constants";
@@ -16,9 +16,9 @@ export default async function AdminSalariesPage({
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const sp = await searchParams;
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
   const { start, end } = getMonthRange(year, month);
 
   const employees = await listEmployees();

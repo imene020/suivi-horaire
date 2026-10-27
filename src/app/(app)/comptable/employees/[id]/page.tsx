@@ -6,7 +6,7 @@ import { EntriesTable } from "@/components/entries/entries-table";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { WeekSummaryTable } from "@/components/dashboard/week-summary-table";
 import { LeaveCard, MoneyCard } from "@/components/dashboard/stat-cards";
-import { getMonthDates, getMonthRange } from "@/lib/date";
+import { getMonthDates, getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours, summarizeByWeek } from "@/lib/hours";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { MONTH_NAMES_FR } from "@/lib/constants";
@@ -22,9 +22,9 @@ export default async function ComptableEmployeeDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
 
   const { start, end } = getMonthRange(year, month);
   const monthDates = getMonthDates(year, month);

@@ -46,7 +46,7 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [search, setSearch] = React.useState("");
   const [dayTypeFilter, setDayTypeFilter] = React.useState("all");
-  const [finalResult, setFinalResult] = React.useState<{ imported?: number; error?: string } | null>(null);
+  const [finalResult, setFinalResult] = React.useState<{ imported?: number; skipped?: number; error?: string } | null>(null);
   const [confirming, setConfirming] = React.useState(false);
   const [defaultEmployee, setDefaultEmployee] = React.useState("");
   const [assignEmployee, setAssignEmployee] = React.useState("");
@@ -67,7 +67,8 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
     setPreview(res);
     // Seules les lignes déjà associées à un employé sont présélectionnées : les lignes
     // non assignées doivent d'abord être rattachées à un employé avant d'être importées.
-    setSelected(new Set(res.rows.filter((r) => r.profile_id).map((r) => r.line)));
+    // Les lignes déjà importées à l'identique ne sont pas présélectionnées (elles seraient ignorées).
+    setSelected(new Set(res.rows.filter((r) => r.profile_id && !r.already_imported).map((r) => r.line)));
     if (res.suggestedEmployee && !defaultEmployee) setDefaultEmployee(res.suggestedEmployee.id);
   }
 
@@ -89,6 +90,7 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
         email: employee.email,
         existing_hours: 0,
         total_hours: r.hours,
+        already_imported: false,
       };
     });
     setPreview({ ...preview, rows });
@@ -145,7 +147,7 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
       setFinalResult({ error: res.error });
       return;
     }
-    setFinalResult({ imported: res.imported });
+    setFinalResult({ imported: res.imported, skipped: res.skipped });
     setPreview(null);
     setSelected(new Set());
   }
@@ -375,6 +377,9 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
                         <td className="px-2 py-1.5">{r.existing_hours.toFixed(2)} h</td>
                         <td className={cn("px-2 py-1.5 font-semibold", r.existing_hours > 0 && "text-emerald-600")}>
                           {r.total_hours.toFixed(2)} h
+                          {r.already_imported && (
+                            <div className="text-xs font-normal text-amber-700">Déjà importée</div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -411,6 +416,7 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
           {finalResult.imported !== undefined && (
             <p className="text-sm text-green-700 bg-green-50 rounded-md px-3 py-2 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" /> {finalResult.imported} entrée(s) importée(s) avec succès.
+              {!!finalResult.skipped && ` ${finalResult.skipped} ligne(s) déjà importée(s) ignorée(s).`}
             </p>
           )}
         </div>

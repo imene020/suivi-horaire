@@ -1,6 +1,6 @@
 import { getSessionProfile } from "@/lib/session";
 import { getEntriesInRange, getEntryByDate } from "@/lib/queries";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone, toDateStr } from "@/lib/date";
 import { summarizeByWeek, sumHours } from "@/lib/hours";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { HoursCard, LeaveCard, MoneyCard } from "@/components/dashboard/stat-cards";
@@ -16,9 +16,9 @@ export default async function DashboardPage({
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const params = await searchParams;
-  const now = new Date();
-  const year = params.year ? Number(params.year) : now.getFullYear();
-  const month = params.month ? Number(params.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = params.year ? Number(params.year) : now.year;
+  const month = params.month ? Number(params.month) : now.month;
 
   const profile = await getSessionProfile();
   if (!profile) redirect("/login");
@@ -27,7 +27,7 @@ export default async function DashboardPage({
 
   const [monthEntries, todayEntry] = await Promise.all([
     getEntriesInRange(profile.id, start, end),
-    getEntryByDate(profile.id, now.toISOString().slice(0, 10)),
+    getEntryByDate(profile.id, now.date),
   ]);
 
   const weeks = summarizeByWeek(monthEntries, profile.weekly_target_hours);
@@ -35,10 +35,9 @@ export default async function DashboardPage({
   const leave = summarizeMonthlyLeave(monthEntries, profile);
 
   const currentWeek = weeks.find((w) => {
-    const wStart = new Date(w.weekStart + "T00:00:00");
-    const wEnd = new Date(wStart);
+    const wEnd = new Date(w.weekStart + "T00:00:00");
     wEnd.setDate(wEnd.getDate() + 6);
-    return now >= wStart && now <= wEnd;
+    return now.date >= w.weekStart && now.date <= toDateStr(wEnd);
   });
 
   const monthLabel = `${MONTH_NAMES_FR[month]} ${year}`;

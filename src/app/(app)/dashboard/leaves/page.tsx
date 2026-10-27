@@ -6,7 +6,7 @@ import { LeaveRequestForm } from "@/components/leaves/leave-request-form";
 import { LeaveRequestList } from "@/components/leaves/leave-request-list";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { workedHours } from "@/lib/hours";
 import { DAY_TYPE_COLORS, DAY_TYPE_LABELS, MONTH_NAMES_FR } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +21,9 @@ export default async function LeavesPage({
   if (!profile) redirect("/login");
 
   const sp = await searchParams;
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
   const { start, end } = getMonthRange(year, month);
 
   const [monthEntries, requests] = await Promise.all([
@@ -63,7 +63,7 @@ export default async function LeavesPage({
         <LeaveCard title={`Maladie — ${MONTH_NAMES_FR[month]} ${year}`} total={leave.maladieTotal} used={leave.maladieUsed} />
       </div>
 
-      {profile.role === "employee" && <LeaveRequestForm defaultDate={now.toISOString().slice(0, 10)} />}
+      {profile.role === "employee" && <LeaveRequestForm defaultDate={now.date} />}
 
       <div>
         <h2 className="text-sm font-medium text-slate-700 mb-3">Mes demandes</h2>

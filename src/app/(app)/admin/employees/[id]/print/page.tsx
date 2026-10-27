@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { findProfileById, getEntriesInRange } from "@/lib/queries";
 import { getSessionProfile } from "@/lib/session";
-import { getMonthDates, getMonthRange } from "@/lib/date";
+import { getMonthDates, getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { formatHours } from "@/lib/utils";
 import { MONTH_NAMES_FR } from "@/lib/constants";
@@ -24,9 +24,9 @@ export default async function PrintSchedulePage({
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/dashboard");
 
-  const now = new Date();
-  const year = sp.year ? Number(sp.year) : now.getFullYear();
-  const month = sp.month ? Number(sp.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = sp.year ? Number(sp.year) : now.year;
+  const month = sp.month ? Number(sp.month) : now.month;
 
   const { start, end } = getMonthRange(year, month);
   const monthDates = getMonthDates(year, month);

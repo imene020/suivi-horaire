@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Lightbulb } from "lucide-react";
 import { getSessionProfile } from "@/lib/session";
 import { listTasks } from "@/lib/queries";
-import { getMonthRange } from "@/lib/date";
+import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { TaskForm } from "@/components/tasks/task-form";
 import { TaskList } from "@/components/tasks/task-list";
@@ -17,9 +17,9 @@ export default async function TasksPage({
   if (!profile) redirect("/login");
 
   const params = await searchParams;
-  const now = new Date();
-  const year = params.year ? Number(params.year) : now.getFullYear();
-  const month = params.month ? Number(params.month) : now.getMonth();
+  const now = nowInAppTimeZone();
+  const year = params.year ? Number(params.year) : now.year;
+  const month = params.month ? Number(params.month) : now.month;
   const { start, end } = getMonthRange(year, month);
 
   const tasks = await listTasks(profile.id, start, end);
@@ -65,7 +65,7 @@ export default async function TasksPage({
         </Card>
       </div>
 
-      <TaskForm defaultDate={now.toISOString().slice(0, 10)} />
+      <TaskForm defaultDate={now.date} />
 
       <div>
         <h2 className="text-sm font-medium text-slate-700 mb-3">Liste des tâches</h2>

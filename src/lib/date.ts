@@ -1,5 +1,50 @@
+/**
+ * Fuseau horaire de l'entreprise. Toutes les notions de "aujourd'hui" et d'heure de
+ * pointage en dépendent. Le serveur (Vercel) tourne en UTC et le navigateur dans le
+ * fuseau de l'utilisateur : sans fuseau explicite, un pointage serait enregistré
+ * avec une heure de décalage. Surchargeable via NEXT_PUBLIC_APP_TIME_ZONE.
+ */
+export const APP_TIME_ZONE = process.env.NEXT_PUBLIC_APP_TIME_ZONE || "Africa/Tunis";
+
+/**
+ * Date (jour du calendrier) au format "YYYY-MM-DD", à partir des champs LOCAUX de `d`.
+ * (L'ancienne version utilisait toISOString(), qui convertit en UTC : à UTC+1, minuit
+ * le 1er octobre devenait "30 septembre", d'où un calendrier décalé d'un jour.)
+ */
 export function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Date et heure "murales" dans le fuseau de l'entreprise, quel que soit le fuseau du serveur. */
+export function nowInAppTimeZone(now: Date = new Date(), timeZone: string = APP_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const year = Number(get("year"));
+  const month = Number(get("month")) - 1; // 0-based, comme Date#getMonth()
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  const time = `${get("hour")}:${get("minute")}`;
+  return { year, month, date, time };
+}
+
+/** "YYYY-MM-DD" du jour courant dans le fuseau de l'entreprise. */
+export function todayStr(now: Date = new Date()): string {
+  return nowInAppTimeZone(now).date;
+}
+
+/** "HH:MM" courant dans le fuseau de l'entreprise. */
+export function nowHHMM(now: Date = new Date()): string {
+  return nowInAppTimeZone(now).time;
 }
 
 export function getMonthDates(year: number, month: number): string[] {

@@ -1,5 +1,10 @@
 -- Schéma SQL (PostgreSQL) pour l'application RH / suivi horaire ELENI
 -- Conversion des collections Firestore en tables relationnelles
+--
+-- Nouvelle base : exécuter ce fichier tel quel.
+-- Base existante : exécuter migrations/001_sync_schema.sql (idempotent).
+-- Ce fichier est vérifié par tests/db.integration.test.ts, qui exécute le code
+-- réel de src/lib/queries.ts contre une base créée à partir de lui.
 
 -- Extension nécessaire pour gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -43,11 +48,10 @@ END$$;
 CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY,
   email text NOT NULL,
-  email_lower text NOT NULL UNIQUE,
   full_name text NOT NULL,
   role app_role NOT NULL,
   function_title text,
-  company text NOT NULL,
+  company text NOT NULL DEFAULT '',
   phone text,
   weekly_target_hours numeric NOT NULL DEFAULT 0,
   weekday_hours jsonb NOT NULL DEFAULT '{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0}'::jsonb,
@@ -75,6 +79,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
   hours numeric NOT NULL DEFAULT 0,
   tasks text,
   remarks text,
+  imported boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (profile_id, entry_date)
@@ -129,7 +134,7 @@ CREATE TABLE IF NOT EXISTS documents (
   note text,
   category document_category NOT NULL,
   uploaded_at timestamptz NOT NULL DEFAULT now(),
-  file_data bytea
+  content bytea
 );
 
 -- Réunions
@@ -164,7 +169,7 @@ CREATE TABLE IF NOT EXISTS meeting_attachments (
   mime_type text NOT NULL,
   size integer NOT NULL DEFAULT 0,
   uploaded_at timestamptz NOT NULL DEFAULT now(),
-  file_data bytea
+  content bytea
 );
 
 -- Messages
@@ -175,22 +180,11 @@ CREATE TABLE IF NOT EXISTS messages (
   recipient_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
   body text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  is_broadcast boolean NOT NULL DEFAULT false
-);
-
--- Participants aux messages (pour recherches rapides)
-CREATE TABLE IF NOT EXISTS message_participants (
-  message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  PRIMARY KEY (message_id, profile_id)
-);
-
--- Lecture des messages
-CREATE TABLE IF NOT EXISTS message_reads (
-  message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  read_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (message_id, profile_id)
+  is_broadcast boolean NOT NULL DEFAULT false,
+  -- Expéditeur + destinataire (expéditeur seul pour une annonce), pour lister les conversations.
+  participant_ids text[] NOT NULL DEFAULT '{}',
+  -- Comptes ayant lu le message.
+  read_by text[] NOT NULL DEFAULT '{}'
 );
 
 -- Notifications
@@ -224,23 +218,31 @@ CREATE TABLE IF NOT EXISTS ocr_drafts (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Sessions
+-- Sessions (token en text : un cookie mal formé ne doit pas provoquer d'erreur SQL)
 CREATE TABLE IF NOT EXISTS sessions (
-  token uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token text PRIMARY KEY,
   profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   expires bigint NOT NULL
 );
 
 -- Tokens de réinitialisation de mot de passe
 CREATE TABLE IF NOT EXISTS password_resets (
-  token uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token text PRIMARY KEY,
   profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   expires bigint NOT NULL,
   used boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Tentatives de connexion / réinitialisation (limitation anti brute-force, src/lib/rate-limit.ts)
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  identifier text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Indexes recommandés
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email_lower ON profiles (lower(email));
 CREATE INDEX IF NOT EXISTS idx_time_entries_profile_id ON time_entries(profile_id);
 CREATE INDEX IF NOT EXISTS idx_time_entries_entry_date ON time_entries(entry_date);
 CREATE INDEX IF NOT EXISTS idx_leave_balances_profile_year ON leave_balances(profile_id, year);
@@ -251,7 +253,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
 CREATE INDEX IF NOT EXISTS idx_meetings_start_at ON meetings(start_at);
 CREATE INDEX IF NOT EXISTS idx_meetings_created_by ON meetings(created_by);
 CREATE INDEX IF NOT EXISTS idx_meeting_participants_profile ON meeting_participants(profile_id);
-CREATE INDEX IF NOT EXISTS idx_message_participants_profile ON message_participants(profile_id);
+CREATE INDEX IF NOT EXISTS idx_messages_participants ON messages USING gin (participant_ids);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_profile_read ON notifications(profile_id, read);
@@ -260,3 +262,4 @@ CREATE INDEX IF NOT EXISTS idx_ocr_drafts_batch ON ocr_drafts(batch_id);
 CREATE INDEX IF NOT EXISTS idx_password_resets_profile ON password_resets(profile_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_profile ON sessions(profile_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+CREATE INDEX IF NOT EXISTS idx_auth_attempts_identifier ON auth_attempts(identifier, created_at);
