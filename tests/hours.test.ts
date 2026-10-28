@@ -94,3 +94,13 @@ describe("weekly summary", () => {
     expect(sumHours(entries)).toBe(17);
   });
 });
+
+describe("formatHours", () => {
+  it("rounds on whole minutes (never shows 60 minutes)", async () => {
+    const { formatHours } = await import("@/lib/utils");
+    expect(formatHours(7.999)).toBe("8h00");
+    expect(formatHours(8.5)).toBe("8h30");
+    expect(formatHours(-25.75)).toBe("-25h45");
+    expect(formatHours(0)).toBe("0h00");
+  });
+});
