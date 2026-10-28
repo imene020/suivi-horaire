@@ -29,7 +29,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Email notifications (`src/lib/mail.ts`, nodemailer over SMTP). If `SMTP_HOST` is missing, emails are only logged to the console:
   - `SMTP_HOST`, `SMTP_PORT` (default 587, 465 = TLS implicit), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (e.g. `"Suivi Horaire <no-reply@example.com>"`).
 
-- `ANTHROPIC_API_KEY` (optional): enables AI reading of scanned timesheets (`src/lib/ai-timesheet.ts`, Messages API via fetch, structured outputs with `output_config.format`; forced `tool_choice` is rejected by Sonnet 5.5). Optional `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`), `ANTHROPIC_BASE_URL`, `ANTHROPIC_VERSION`. Falls back to classic OCR on any error.
+- AI reading of scanned timesheets (`src/lib/ai-timesheet.ts`), first configured provider wins:
+  - `ANTHROPIC_API_KEY`: Claude, Messages API via fetch, structured outputs with `output_config.format` (forced `tool_choice` is rejected by Sonnet 5.5). Optional `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`), `ANTHROPIC_BASE_URL`, `ANTHROPIC_VERSION`.
+  - `GEMINI_API_KEY`: Gemini free tier, `generateContent` with `responseMimeType` + `responseJsonSchema` (retries without the schema on a 400). Optional `GEMINI_MODEL` (default `gemini-3.8-flash`), `GEMINI_BASE_URL`. Free-tier content may be used by Google to improve its products.
+  - Falls back to classic OCR on any error (a 429 quota error gets its own message).
 
 ## Design
 - Brand: steel greys from the ELENI logo (`steel-*` tokens in `globals.css`) + one accent, Sidi Bou Said blue (`sea-*`), reserved for live/active states (clocked in, progress, links, AI). Buttons: `default` = steel, `accent` = blue. Clocking out is not `destructive`.

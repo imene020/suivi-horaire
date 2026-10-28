@@ -22,7 +22,12 @@ interface EmployeeOption {
   email: string;
 }
 
-const ENGINE_LABELS = { claude: "Lu par l'IA (Claude)", google_vision: "Lu par OCR (Google Vision)", tesseract: "Lu par OCR classique" } as const;
+const ENGINE_LABELS = {
+  claude: "Lu par l'IA (Claude)",
+  gemini: "Lu par l'IA (Gemini)",
+  google_vision: "Lu par OCR (Google Vision)",
+  tesseract: "Lu par OCR classique",
+} as const;
 
 export function OcrImportForm({
   employees,
@@ -160,8 +165,8 @@ export function OcrImportForm({
           </span>
           <p className="text-xs text-slate-600">
             <span className="font-semibold text-slate-800">Lecture OCR classique.</span> Pour lire aussi l&apos;écriture
-            manuscrite et les feuilles à plusieurs employés, ajoutez la variable <code>ANTHROPIC_API_KEY</code> dans les
-            réglages du serveur.
+            manuscrite et les feuilles à plusieurs employés, ajoutez dans les réglages du serveur une clé{" "}
+            <code>GEMINI_API_KEY</code> (offre gratuite de Google) ou <code>ANTHROPIC_API_KEY</code> (Claude).
           </p>
         </div>
       )}
@@ -211,12 +216,12 @@ export function OcrImportForm({
           <div className="space-y-2">
             <p
               className={
-                lastScan.engine === "claude"
+                lastScan.engine === "claude" || lastScan.engine === "gemini"
                   ? "inline-flex items-center gap-1.5 rounded-full bg-sea-50 px-2.5 py-1 text-xs font-medium text-sea-700"
                   : "inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
               }
             >
-              {lastScan.engine === "claude" ? <Sparkles className="h-3.5 w-3.5" /> : <ScanLine className="h-3.5 w-3.5" />}
+              {lastScan.engine === "claude" || lastScan.engine === "gemini" ? <Sparkles className="h-3.5 w-3.5" /> : <ScanLine className="h-3.5 w-3.5" />}
               {ENGINE_LABELS[lastScan.engine]} · {lastScan.rows} ligne(s) à relire
             </p>
             {lastScan.warning && (

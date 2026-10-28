@@ -155,3 +155,95 @@ describe("matchEmployeeByName", () => {
     expect(matchEmployeeByName(team, "")).toBeNull();
   });
 });
+
+describe("Gemini (free tier) provider", () => {
+  const env = { ...process.env };
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.GEMINI_API_KEY = "gem-key";
+    delete process.env.GEMINI_BASE_URL;
+    delete process.env.GEMINI_MODEL;
+  });
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  const geminiOk = (payload: unknown, extra: Record<string, unknown> = {}) => ({
+    status: 200,
+    json: {
+      candidates: [
+        {
+          content: { role: "model", parts: [{ text: "thinking about the sheet…", thought: true }, { text: JSON.stringify(payload) }] },
+          finishReason: "STOP",
+          ...extra,
+        },
+      ],
+    },
+  });
+
+  it("picks the configured provider, Claude first", async () => {
+    const { aiProvider } = await import("@/lib/ai-timesheet");
+    expect(aiProvider()).toBe("gemini");
+    process.env.ANTHROPIC_API_KEY = "x";
+    expect(aiProvider()).toBe("claude");
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    expect(aiProvider()).toBeNull();
+  });
+
+  it("sends the image inline with a JSON schema and ignores thought parts", async () => {
+    const { readTimesheetWithAi } = await import("@/lib/ai-timesheet");
+    const { fn, calls } = fakeFetch([geminiOk(SAMPLE)]);
+    const { provider, sheet } = await readTimesheetWithAi(Buffer.from("img"), "image/jpeg", { today: "2026-10-28", employeeNames: ["Amira Ben Salah"] }, fn);
+
+    expect(provider).toBe("gemini");
+    expect(calls[0].url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
+    expect((calls[0].init.headers as Record<string, string>)["x-goog-api-key"]).toBe("gem-key");
+    const body = calls[0].body as {
+      systemInstruction: { parts: { text: string }[] };
+      contents: { parts: { inline_data?: { mime_type: string; data: string }; text?: string }[] }[];
+      generationConfig: { responseMimeType: string; responseJsonSchema: unknown; temperature: number };
+    };
+    expect(body.contents[0].parts[0].inline_data).toEqual({ mime_type: "image/jpeg", data: Buffer.from("img").toString("base64") });
+    expect(body.contents[0].parts[1].text).toContain("Today is 2026-10-28");
+    expect(body.systemInstruction.parts[0].text).toContain("timesheets");
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
+    expect(body.generationConfig.responseJsonSchema).toEqual(AI_TIMESHEET_SCHEMA);
+    expect(body.generationConfig.temperature).toBe(0);
+    expect(sheet.rows).toHaveLength(3);
+    expect(toParsedLines(sheet)[0]).toMatchObject({ start_time: "08:30", hours: 8 });
+  });
+
+  it("retries without the schema when the API rejects it", async () => {
+    const { readTimesheetWithGemini } = await import("@/lib/ai-timesheet");
+    const { fn, calls } = fakeFetch([
+      { status: 400, text: '{"error":{"code":400,"message":"Invalid JSON payload received. Unknown name \\"responseJsonSchema\\""}}' },
+      geminiOk(SAMPLE),
+    ]);
+    const sheet = await readTimesheetWithGemini(Buffer.from("x"), "image/png", { today: "2026-10-28", employeeNames: [] }, fn);
+    expect(calls).toHaveLength(2);
+    const cfg = (calls[1].body as { generationConfig: Record<string, unknown> }).generationConfig;
+    expect(cfg.responseJsonSchema).toBeUndefined();
+    expect(cfg.responseMimeType).toBe("application/json");
+    expect(JSON.stringify(calls[1].body)).toContain("JSON only");
+    expect(sheet.rows[0].date).toBe("2026-10-12");
+  });
+
+  it("reports quota, refusals and truncation clearly", async () => {
+    const { readTimesheetWithGemini } = await import("@/lib/ai-timesheet");
+    const opts = { today: "2026-10-28", employeeNames: [] };
+    await expect(readTimesheetWithGemini(Buffer.from("x"), "image/jpeg", opts, fakeFetch([{ status: 429, text: "RESOURCE_EXHAUSTED" }]).fn)).rejects.toThrow("429");
+    await expect(readTimesheetWithGemini(Buffer.from("x"), "image/jpeg", opts, fakeFetch([{ status: 200, json: { promptFeedback: { blockReason: "SAFETY" } } }]).fn)).rejects.toThrow("refusé");
+    await expect(readTimesheetWithGemini(Buffer.from("x"), "image/jpeg", opts, fakeFetch([geminiOk(SAMPLE, { finishReason: "MAX_TOKENS" })]).fn)).rejects.toThrow("trop longue");
+    await expect(readTimesheetWithGemini(Buffer.from("x"), "image/jpeg", opts, fakeFetch([{ status: 200, json: { candidates: [{ finishReason: "OTHER" }] } }]).fn)).rejects.toThrow("vide");
+  });
+
+  it("uses a configurable model and base URL", async () => {
+    process.env.GEMINI_MODEL = "gemini-3.5-flash-lite";
+    process.env.GEMINI_BASE_URL = "http://localhost:9912/";
+    const { readTimesheetWithGemini } = await import("@/lib/ai-timesheet");
+    const { fn, calls } = fakeFetch([geminiOk(SAMPLE)]);
+    await readTimesheetWithGemini(Buffer.from("x"), "image/webp", { today: "2026-10-28", employeeNames: [] }, fn);
+    expect(calls[0].url).toBe("http://localhost:9912/v1beta/models/gemini-3.5-flash-lite:generateContent");
+  });
+});

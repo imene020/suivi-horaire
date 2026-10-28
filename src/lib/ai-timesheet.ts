@@ -8,8 +8,13 @@ import { DEFAULT_WEEKDAY_HOURS } from "./constants";
  * modèle lit l'écriture manuscrite, comprend la mise en page (colonnes, une ligne par jour,
  * matin/après-midi), associe chaque ligne à un nom et signale ce qu'il lit mal.
  *
- * Activé seulement si ANTHROPIC_API_KEY est défini : l'image est alors envoyée à l'API
- * d'Anthropic. Sans clé, l'application utilise l'OCR classique comme avant.
+ * Deux fournisseurs possibles (le premier configuré est utilisé) :
+ *  - Claude (Anthropic), avec ANTHROPIC_API_KEY : payant ; les données ne servent pas à
+ *    entraîner les modèles.
+ *  - Gemini (Google), avec GEMINI_API_KEY : offre gratuite sans carte bancaire, avec quotas ;
+ *    sur l'offre gratuite, Google indique que les contenus envoyés peuvent servir à améliorer
+ *    ses produits (à éviter pour des données réelles d'employés sans l'accord de l'entreprise).
+ * Sans clé, l'application utilise l'OCR classique comme avant.
  * Rien n'est jamais enregistré directement : chaque ligne passe par la relecture humaine.
  */
 
@@ -43,8 +48,17 @@ export interface AiParsedLine {
   confidence: AiTimesheetRow["confidence"];
 }
 
+export type AiProvider = "claude" | "gemini";
+
+/** Fournisseur d'IA configuré (Claude en priorité), ou null si aucun. */
+export function aiProvider(): AiProvider | null {
+  if (process.env.ANTHROPIC_API_KEY?.trim()) return "claude";
+  if (process.env.GEMINI_API_KEY?.trim()) return "gemini";
+  return null;
+}
+
 export function isAiReadingEnabled(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY?.trim();
+  return aiProvider() !== null;
 }
 
 /** Schéma imposé à la réponse (structured outputs) : pas de null, "" signifie "illisible". */
@@ -248,4 +262,100 @@ export async function readTimesheetWithClaude(
   const text = (data.content ?? []).find((b) => b.type === "text")?.text;
   if (!text) throw new Error("Réponse de l'IA vide.");
   return parseAiTimesheetJson(text);
+}
+
+interface GeminiPart {
+  text?: string;
+  thought?: boolean;
+}
+
+/**
+ * Appelle l'API Gemini (generateContent) avec l'image. Même schéma de réponse que pour Claude.
+ * https://ai.google.dev/gemini-api/docs/generate-content/structured-output
+ */
+export async function readTimesheetWithGemini(
+  image: Buffer,
+  mediaType: string,
+  opts: { today: string; employeeNames: string[] },
+  fetchImpl: typeof fetch = fetch
+): Promise<AiTimesheet> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) throw new Error("GEMINI_API_KEY non configurée.");
+  const baseUrl = (process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
+  async function call(structured: boolean) {
+    const prompt = buildPrompt(opts.today, opts.employeeNames);
+    const body = {
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inline_data: { mime_type: mediaType, data: image.toString("base64") } },
+            {
+              text: structured
+                ? prompt
+                : `${prompt}\n\nReply with JSON only, matching this JSON Schema:\n${JSON.stringify(AI_TIMESHEET_SCHEMA)}`,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json",
+        ...(structured ? { responseJsonSchema: AI_TIMESHEET_SCHEMA } : {}),
+      },
+    };
+    return fetchImpl(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey! },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(55_000),
+    });
+  }
+
+  let res = await call(true);
+  if (res.status === 400) {
+    // Modèle ou version d'API sans schéma JSON : on redemande du JSON par consigne.
+    const detail = await res.text();
+    if (/responseJsonSchema|schema|Unknown name/i.test(detail)) res = await call(false);
+    else throw new Error(`API Gemini (400) : ${detail.slice(0, 300)}`);
+  }
+  if (res.status === 429) throw new Error("API Gemini (429) : quota gratuit atteint, réessayez dans une minute.");
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`API Gemini (${res.status}) : ${detail.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as {
+    candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+    promptFeedback?: { blockReason?: string };
+  };
+  if (data.promptFeedback?.blockReason) throw new Error("L'IA a refusé de lire cette image.");
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    throw new Error("Feuille trop longue pour une seule lecture : la découper en deux photos.");
+  }
+  // Les éventuelles parties de "réflexion" (thought) ne contiennent pas la réponse.
+  const text = (candidate?.content?.parts ?? [])
+    .filter((p) => typeof p.text === "string" && !p.thought)
+    .map((p) => p.text)
+    .join("");
+  if (!text) throw new Error(`Réponse de l'IA vide (${candidate?.finishReason ?? "sans motif"}).`);
+  return parseAiTimesheetJson(text);
+}
+
+/** Lit la feuille avec le fournisseur configuré. */
+export async function readTimesheetWithAi(
+  image: Buffer,
+  mediaType: string,
+  opts: { today: string; employeeNames: string[] },
+  fetchImpl: typeof fetch = fetch
+): Promise<{ provider: AiProvider; sheet: AiTimesheet }> {
+  const provider = aiProvider();
+  if (provider === "claude") return { provider, sheet: await readTimesheetWithClaude(image, mediaType, opts, fetchImpl) };
+  if (provider === "gemini") return { provider, sheet: await readTimesheetWithGemini(image, mediaType, opts, fetchImpl) };
+  throw new Error("Aucune clé d'IA configurée (ANTHROPIC_API_KEY ou GEMINI_API_KEY).");
 }

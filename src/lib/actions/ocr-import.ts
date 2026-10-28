@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/session";
 import { extractTextFromImage } from "@/lib/ocr";
 import { parseOcrTimesheetText, validateOcrRow } from "@/lib/ocr-parse";
-import { isAiReadingEnabled, readTimesheetWithClaude, toParsedLines, AiParsedLine } from "@/lib/ai-timesheet";
+import { isAiReadingEnabled, readTimesheetWithAi, toParsedLines, AiParsedLine } from "@/lib/ai-timesheet";
 import { matchEmployeeByName } from "@/lib/name-match";
 import { nowInAppTimeZone } from "@/lib/date";
 import { notifyAdminsOcrScan } from "@/lib/notifications";
@@ -30,7 +30,7 @@ export interface OcrAnalyzeResult {
   success: true;
   batch_id: string;
   rows: OcrDraftRow[];
-  engine: "claude" | "google_vision" | "tesseract";
+  engine: "claude" | "gemini" | "google_vision" | "tesseract";
   rawText: string;
   /** Message à afficher quand la lecture par IA a échoué et que l'OCR classique a pris le relais. */
   warning?: string;
@@ -72,17 +72,20 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
 
   if (isAiReadingEnabled()) {
     try {
-      const ai = await readTimesheetWithClaude(buffer, file.type, {
+      const { provider, sheet: ai } = await readTimesheetWithAi(buffer, file.type, {
         today: nowInAppTimeZone().date,
         employeeNames: employees.map((e) => e.full_name),
       });
       parsedLines = toParsedLines(ai);
       sheetEmployeeName = ai.employee_name;
-      engine = "claude";
+      engine = provider;
       text = ai.rows.map((r) => r.raw_text).join("\n") + (ai.notes ? `\n\nRemarques de l'IA : ${ai.notes}` : "");
     } catch (err) {
       console.error("[ocr] lecture IA impossible, repli sur l'OCR classique :", err);
-      warning = "La lecture par IA n'a pas abouti : les lignes ci-dessous viennent de l'OCR classique, vérifiez-les avec attention.";
+      const quota = err instanceof Error && err.message.includes("429");
+      warning = quota
+        ? "Le quota gratuit de l'IA est atteint pour le moment : les lignes ci-dessous viennent de l'OCR classique. Réessayez dans une minute pour une lecture par IA."
+        : "La lecture par IA n'a pas abouti : les lignes ci-dessous viennent de l'OCR classique, vérifiez-les avec attention.";
     }
   }
   if (!parsedLines) {
@@ -101,7 +104,7 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
 
   // Le document original est conservé (photo/scan) pour que l'admin puisse le comparer
   // aux lignes extraites pendant la relecture, s'il est déjà associé à un employé.
-  const engineLabel = { claude: "lecture IA Claude", google_vision: "Google Vision", tesseract: "Tesseract local" }[engine!];
+  const engineLabel = { claude: "lecture IA Claude", gemini: "lecture IA Gemini", google_vision: "Google Vision", tesseract: "Tesseract local" }[engine!];
   const document = defaultProfile
     ? await createDocument({
         profile_id: defaultProfile.id,
