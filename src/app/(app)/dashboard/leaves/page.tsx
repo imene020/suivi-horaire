@@ -58,7 +58,7 @@ export default async function LeavesPage({
           title={`Congé — ${MONTH_NAMES_FR[month]} ${year}`}
           total={leave.congeTotal}
           used={leave.congeUsed}
-          hint={leave.recoveryDays > 0 ? `dont ${leave.recoveryDays}j de récupération` : undefined}
+          hint={leave.recoveryDays > 0 ? `dont ${leave.recoveryDays.toLocaleString("fr-FR")} j de récupération` : undefined}
         />
         <LeaveCard title={`Maladie — ${MONTH_NAMES_FR[month]} ${year}`} total={leave.maladieTotal} used={leave.maladieUsed} />
       </div>

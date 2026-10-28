@@ -55,7 +55,7 @@ export default async function ComptableEmployeeDetailPage({
           title={`Congé — ${monthLabel}`}
           total={leave.congeTotal}
           used={leave.congeUsed}
-          hint={leave.recoveryDays > 0 ? `dont ${leave.recoveryDays}j de récupération` : undefined}
+          hint={leave.recoveryDays > 0 ? `dont ${leave.recoveryDays.toLocaleString("fr-FR")} j de récupération` : undefined}
         />
         <LeaveCard title={`Maladie — ${monthLabel}`} total={leave.maladieTotal} used={leave.maladieUsed} />
       </div>
@@ -70,7 +70,7 @@ export default async function ComptableEmployeeDetailPage({
         <MonthSelector year={year} month={month} />
       </div>
 
-      <WeekSummaryTable weeks={weeks} />
+      <WeekSummaryTable weeks={weeks} monthStart={start} monthEnd={end} today={now.date} />
 
       <EntriesTable profileId={id} monthDates={monthDates} entriesByDate={entriesByDate} readOnly />
     </div>

@@ -96,7 +96,7 @@ export default async function EmployeeDetailPage({
         <MonthSelector year={year} month={month} />
       </div>
 
-      <WeekSummaryTable weeks={weeks} />
+      <WeekSummaryTable weeks={weeks} monthStart={start} monthEnd={end} today={now.date} />
 
       <EntriesTable profileId={id} monthDates={monthDates} entriesByDate={entriesByDate} />
 

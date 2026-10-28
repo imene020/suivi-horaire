@@ -12,6 +12,30 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-brand: #545454;
+
+  /* Acier brossé : les gris du logo ELENI. Base de l'identité (boutons, navigation). */
+  --color-steel-50: #f6f6f5;
+  --color-steel-100: #ebeae8;
+  --color-steel-200: #d6d3d1;
+  --color-steel-300: #b0abaa;
+  --color-steel-400: #8f8988;
+  --color-steel-500: #736d6c;
+  --color-steel-600: #5f5a59;
+  --color-steel-700: #4b4746;
+  --color-steel-800: #36332f;
+  --color-steel-900: #24221f;
+
+  /* Bleu Sidi Bou Saïd : l'accent, réservé à ce qui est "vivant" (pointage en cours,
+     progression, liens, IA). Il accompagne l'acier sans le remplacer. */
+  --color-sea-50: #eef4fc;
+  --color-sea-100: #dbe7f8;
+  --color-sea-200: #b8cff1;
+  --color-sea-300: #8cb1e6;
+  --color-sea-400: #4f88d6;
+  --color-sea-500: #2a6cc4;
+  --color-sea-600: #1f58a8;
+  --color-sea-700: #1a4787;
+  --color-sea-800: #173a6b;
 }
 
 html {
@@ -28,8 +52,31 @@ body {
 }
 
 ::selection {
-  background-color: #736d6c;
+  background-color: #1f58a8;
   color: #ffffff;
+}
+
+/* Chiffres alignés (horloges, heures, montants) */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reflet d'acier brossé, repris du logo, pour les éléments d'identité */
+.steel-sheen {
+  background-image: linear-gradient(135deg, #8f8988 0%, #5f5a59 45%, #4b4746 55%, #736d6c 100%);
+}
+
+/* Point "en direct" (pointage en cours) */
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(42 108 196 / 0.45); }
+  70% { box-shadow: 0 0 0 8px rgb(42 108 196 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(42 108 196 / 0); }
+}
+.live-dot {
+  animation: live-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
 }
 
 ::-webkit-scrollbar {

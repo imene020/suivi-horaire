@@ -1,13 +1,14 @@
 import { getSessionProfile } from "@/lib/session";
 import { getEntriesInRange, getEntryByDate } from "@/lib/queries";
 import { getMonthRange, nowInAppTimeZone, toDateStr } from "@/lib/date";
-import { summarizeByWeek, sumHours } from "@/lib/hours";
+import { summarizeByWeek, sumHours, standardHoursFor } from "@/lib/hours";
 import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { HoursCard, LeaveCard, MoneyCard } from "@/components/dashboard/stat-cards";
 import { WeekSummaryTable } from "@/components/dashboard/week-summary-table";
 import { MonthSelector } from "@/components/dashboard/month-selector";
 import { PunchClock } from "@/components/dashboard/punch-clock";
 import { MONTH_NAMES_FR } from "@/lib/constants";
+import { PageGreeting, firstNameOf } from "@/components/ui/page-greeting";
 import { redirect } from "next/navigation";
 
 export default async function DashboardPage({
@@ -44,47 +45,47 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tableau de bord</h1>
-          <p className="text-sm text-slate-500">
-            {profile.full_name} — {profile.company}
-          </p>
-        </div>
+      <PageGreeting
+        firstName={firstNameOf(profile.full_name)}
+        subtitle={[profile.function_title, profile.company].filter(Boolean).join(" · ")}
+      >
         <MonthSelector year={year} month={month} />
-      </div>
+      </PageGreeting>
 
-      {profile.role === "employee" && <PunchClock todayEntry={todayEntry} />}
+      {profile.role === "employee" && (
+        <PunchClock todayEntry={todayEntry} standardHours={standardHoursFor(now.date, profile.weekday_hours)} />
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <HoursCard title={`Heures payées — ${monthLabel}`} hours={monthTotal} />
+        <HoursCard title={`Heures payées · ${monthLabel}`} hours={monthTotal} />
         <HoursCard
-          title="Heures cette semaine"
+          title="Cette semaine"
           hours={currentWeek?.totalHours ?? 0}
           target={profile.weekly_target_hours}
         />
         <LeaveCard
-          title={`Congé — ${MONTH_NAMES_FR[month]}`}
+          title={`Congé · ${MONTH_NAMES_FR[month]}`}
           total={leave.congeTotal}
           used={leave.congeUsed}
           hint={
             leave.recoveryDays > 0
-              ? `${leave.congeAllowance}j/mois + ${leave.recoveryDays}j de récupération`
-              : `${leave.congeAllowance}j par mois (non reportable)`
+              ? `${leave.congeAllowance.toLocaleString("fr-FR")} j/mois + ${leave.recoveryDays.toLocaleString("fr-FR")} j de récupération`
+              : `${leave.congeAllowance.toLocaleString("fr-FR")} j par mois (non reportable)`
           }
         />
-        <LeaveCard title={`Maladie — ${MONTH_NAMES_FR[month]}`} total={leave.maladieTotal} used={leave.maladieUsed} />
+        <LeaveCard title={`Maladie · ${MONTH_NAMES_FR[month]}`} total={leave.maladieTotal} used={leave.maladieUsed} />
       </div>
 
-      {profile.role === "employee" && profile.monthly_salary > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MoneyCard title="Salaire mensuel" amount={profile.monthly_salary} hint="Montant fixe défini par la RH" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0">
+          <h2 className="text-sm font-medium text-slate-700 mb-3">Résumé hebdomadaire</h2>
+          <WeekSummaryTable weeks={weeks} monthStart={start} monthEnd={end} today={now.date} />
         </div>
-      )}
-
-      <div>
-        <h2 className="text-sm font-medium text-slate-700 mb-3">Résumé hebdomadaire</h2>
-        <WeekSummaryTable weeks={weeks} />
+        {profile.role === "employee" && profile.monthly_salary > 0 && (
+          <div className="lg:pt-8">
+            <MoneyCard title="Salaire mensuel" amount={profile.monthly_salary} hint="Montant fixe défini par la RH" />
+          </div>
+        )}
       </div>
     </div>
   );
