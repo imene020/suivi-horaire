@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardValue } from "@/component
 import { getMonthRange, nowInAppTimeZone } from "@/lib/date";
 import { sumHours } from "@/lib/hours";
 import { formatHours } from "@/lib/utils";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Download } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { MONTH_NAMES_FR } from "@/lib/constants";
 
 export default async function ComptableOverviewPage() {
   const now = nowInAppTimeZone();
@@ -16,6 +18,8 @@ export default async function ComptableOverviewPage() {
   ]);
   const totalHours = sumHours(monthEntries);
   const activeCount = employees.filter((e) => e.active).length;
+  // Le mois précédent est souvent celui qu'on paie en début de mois.
+  const prev = now.month === 0 ? { year: now.year - 1, month: 11 } : { year: now.year, month: now.month - 1 };
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -42,6 +46,25 @@ export default async function ComptableOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Export de paie</p>
+            <p className="text-xs text-slate-500">
+              Fichier Excel : synthèse par employé, détail jour par jour et points à vérifier avant de payer.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/exports/payroll?year=${prev.year}&month=${prev.month}`} className={buttonVariants({ variant: "outline" })}>
+              <Download className="h-4 w-4" /> {MONTH_NAMES_FR[prev.month]} {prev.year}
+            </a>
+            <a href={`/api/exports/payroll?year=${now.year}&month=${now.month}`} className={buttonVariants()}>
+              <Download className="h-4 w-4" /> {MONTH_NAMES_FR[now.month]} {now.year} (en cours)
+            </a>
+          </div>
+        </CardContent>
+      </Card>
 
       <Link
         href="/comptable/employees"

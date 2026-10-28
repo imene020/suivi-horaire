@@ -8,7 +8,8 @@ import { summarizeMonthlyLeave } from "@/lib/leaves";
 import { MONTH_NAMES_FR } from "@/lib/constants";
 import { formatHours } from "@/lib/utils";
 import { formatMoney } from "@/components/dashboard/stat-cards";
-import { ArrowRight, Wallet } from "lucide-react";
+import { ArrowRight, Download, Wallet } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 
 export default async function AdminSalariesPage({
   searchParams,
@@ -47,7 +48,12 @@ export default async function AdminSalariesPage({
           </h1>
           <p className="text-sm text-slate-500">Salaire mensuel fixe, heures et congés — {monthLabel}</p>
         </div>
-        <MonthSelector year={year} month={month} />
+        <div className="flex flex-wrap items-center gap-2">
+          <a href={`/api/exports/payroll?year=${year}&month=${month}`} className={buttonVariants({ variant: "outline" })}>
+            <Download className="h-4 w-4" /> Exporter en Excel
+          </a>
+          <MonthSelector year={year} month={month} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
