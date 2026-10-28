@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { uploadPaySlip, removeDocument } from "@/lib/actions/documents";
+import { uploadTooLarge } from "@/lib/constants";
 
 interface PaieDoc {
   id: string;
@@ -27,6 +28,12 @@ export function PaySlipUpload({ profileId, documents }: { profileId: string; doc
     setSuccess(false);
 
     const formData = new FormData(e.currentTarget);
+    const tooLarge = uploadTooLarge(formData);
+    if (tooLarge) {
+      setPending(false);
+      setError(tooLarge);
+      return;
+    }
     const result = await uploadPaySlip(formData, profileId);
 
     setPending(false);

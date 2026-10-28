@@ -1,5 +1,6 @@
 "use server";
 
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_ERROR } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireAdmin } from "@/lib/session";
@@ -18,7 +19,6 @@ import {
 import { notifyMeetingInvite } from "@/lib/notifications";
 import { MeetingRecurrence, Profile } from "@/lib/types";
 
-const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const ALLOWED_EXT = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"]);
 
 function revalidateAll(meetingId?: string) {
@@ -120,7 +120,7 @@ export async function uploadMeetingAttachmentAction(formData: FormData, meetingI
 
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) return { error: "Veuillez sélectionner un fichier." };
-  if (file.size > MAX_ATTACHMENT_SIZE) return { error: "Fichier trop volumineux (max 10 Mo)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: MAX_UPLOAD_ERROR };
   if (!isAllowedAttachment(file)) return { error: "Type de fichier non autorisé." };
 
   const buffer = Buffer.from(await file.arrayBuffer());

@@ -1,5 +1,6 @@
 "use server";
 
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_ERROR } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireAdmin } from "@/lib/session";
@@ -19,7 +20,6 @@ import {
 import { OcrDraftRow } from "@/lib/types";
 import { generateId } from "@/lib/db";
 
-const MAX_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export interface OcrAnalyzeResult {
@@ -43,7 +43,7 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
   const defaultProfileId = String(formData.get("default_profile_id") || "").trim() || null;
 
   if (!file || file.size === 0) return { error: "Veuillez sélectionner une photo ou un scan (JPG, PNG ou WEBP)." };
-  if (file.size > MAX_SIZE) return { error: "Fichier trop volumineux (max 10 Mo)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: MAX_UPLOAD_ERROR };
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
     return { error: "Format non pris en charge pour l'OCR : utilisez une photo ou un scan JPG, PNG ou WEBP." };
   }

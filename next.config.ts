@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     serverActions: {
+      // 1 Mo par défaut : trop peu pour une fiche de paie PDF ou une photo de feuille de
+      // présence. 4,5 Mo = limite des requêtes sur Vercel (fichiers plafonnés à 4 Mo,
+      // voir MAX_UPLOAD_BYTES dans src/lib/constants.ts).
+      bodySizeLimit: "4.5mb",
       // *.vercel.app était trop large (n'importe quel projet Vercel pourrait
       // envoyer des requêtes Server Action). On le remplace par le seul hôte
       // de production réel. La variante générique est conservée en commentaire.

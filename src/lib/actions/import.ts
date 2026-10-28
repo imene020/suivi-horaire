@@ -1,5 +1,6 @@
 "use server";
 
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_ERROR } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/session";
 import { parseHoursCsv, parseHoursXlsx, CsvParseResult } from "@/lib/csv-import";
@@ -14,7 +15,6 @@ import {
 } from "@/lib/queries";
 import { DayType, WorkMode } from "@/lib/types";
 
-const MAX_SIZE = 5 * 1024 * 1024;
 
 export interface ImportSummary {
   imported: number;
@@ -54,7 +54,7 @@ export interface ImportPreviewRow {
 
 async function parseFile(file: File): Promise<CsvParseResult | { error: string }> {
   if (!file || file.size === 0) return { error: "Veuillez sélectionner un fichier CSV ou Excel." };
-  if (file.size > MAX_SIZE) return { error: "Fichier trop volumineux (max 5 Mo)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: MAX_UPLOAD_ERROR };
 
   const fileName = file.name.toLowerCase();
   const isExcel = fileName.endsWith(".xlsx");

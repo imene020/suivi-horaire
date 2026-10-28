@@ -17,6 +17,7 @@ import {
   removeMeetingAttachmentAction,
 } from "@/lib/actions/meetings";
 import { Meeting, MeetingAttachment, MeetingParticipant, Profile } from "@/lib/types";
+import { uploadTooLarge } from "@/lib/constants";
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -50,6 +51,7 @@ export function MeetingDetail({
   const [savingMinutes, setSavingMinutes] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
 
   function toggle(id: string) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
@@ -93,14 +95,23 @@ export function MeetingDetail({
 
   async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    setUploadError(null);
+    const tooLarge = uploadTooLarge(formData);
+    if (tooLarge) {
+      setUploadError(tooLarge);
+      return;
+    }
     setUploading(true);
-    const formData = new FormData(e.currentTarget);
     const result = await uploadMeetingAttachmentAction(formData, meeting.id);
     setUploading(false);
-    if (!result?.error) {
-      e.currentTarget.reset();
-      router.refresh();
+    if (result?.error) {
+      setUploadError(result.error);
+      return;
     }
+    form.reset();
+    router.refresh();
   }
 
   async function handleRemoveAttachment(id: string) {
@@ -210,6 +221,7 @@ export function MeetingDetail({
               {uploading ? "Envoi..." : "Ajouter"}
             </Button>
           </form>
+          {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
           {attachments.length > 0 && (
             <div className="divide-y divide-slate-100 border-t border-slate-100 pt-2">
               {attachments.map((a) => (

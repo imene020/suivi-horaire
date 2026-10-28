@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { uploadEmployeeDocument } from "@/lib/actions/documents";
+import { uploadTooLarge } from "@/lib/constants";
 
 export function EmployeeUploadForm() {
   const router = useRouter();
@@ -21,6 +22,12 @@ export function EmployeeUploadForm() {
     setSuccess(false);
 
     const formData = new FormData(e.currentTarget);
+    const tooLarge = uploadTooLarge(formData);
+    if (tooLarge) {
+      setPending(false);
+      setError(tooLarge);
+      return;
+    }
     const result = await uploadEmployeeDocument(formData);
 
     setPending(false);

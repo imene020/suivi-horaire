@@ -1,5 +1,6 @@
 "use server";
 
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_ERROR } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireUser, requireAdmin } from "@/lib/session";
@@ -7,7 +8,6 @@ import { createDocument, deleteDocumentRecord, findProfileById, getDocumentById 
 import { notifyPayslipUploaded } from "@/lib/notifications";
 import { DocumentRecord } from "@/lib/db";
 
-const MAX_SIZE = 10 * 1024 * 1024;
 
 const ALLOWED_CATEGORIES: DocumentRecord["category"][] = ["employe", "paie", "maladie", "cv"];
 
@@ -50,7 +50,7 @@ export async function uploadEmployeeDocument(formData: FormData) {
   const category = safeCategory(formData.get("category") as string | null);
 
   if (!file || file.size === 0) return { error: "Veuillez sélectionner un fichier." };
-  if (file.size > MAX_SIZE) return { error: "Fichier trop volumineux (max 10 Mo)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: MAX_UPLOAD_ERROR };
   if (!isAllowedFile(file)) return { error: "Type de fichier non autorisé (PDF, Word ou image uniquement)." };
 
   const buffer = await fileToBuffer(file);
@@ -75,7 +75,7 @@ export async function uploadPaySlip(formData: FormData, profileId: string) {
   const note = formData.get("note") as string | null;
 
   if (!file || file.size === 0) return { error: "Veuillez sélectionner un fichier." };
-  if (file.size > MAX_SIZE) return { error: "Fichier trop volumineux (max 10 Mo)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: MAX_UPLOAD_ERROR };
   if (!isAllowedFile(file)) return { error: "Type de fichier non autorisé (PDF, Word ou image uniquement)." };
 
   const buffer = await fileToBuffer(file);

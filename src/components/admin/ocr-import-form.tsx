@@ -13,6 +13,7 @@ import {
   updateOcrDraftAction,
 } from "@/lib/actions/ocr-import";
 import { OcrDraftRow } from "@/lib/types";
+import { uploadTooLarge } from "@/lib/constants";
 
 interface EmployeeOption {
   id: string;
@@ -43,6 +44,12 @@ export function OcrImportForm({
     setAnalyzeError(null);
     setFinalResult(null);
     const formData = new FormData(e.currentTarget);
+    const tooLarge = uploadTooLarge(formData);
+    if (tooLarge) {
+      setPending(false);
+      setAnalyzeError(tooLarge);
+      return;
+    }
     const res = await analyzeOcrScanAction(formData);
     setPending(false);
     if ("error" in res) {

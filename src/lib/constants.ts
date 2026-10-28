@@ -12,6 +12,23 @@ export const DEFAULT_WEEKDAY_HOURS: WeekdayHours = {
 
 export const DEFAULT_WEEKLY_TARGET_HOURS = 42;
 
+/**
+ * Taille maximale d'un fichier envoyé. Vercel refuse toute requête de plus de 4,5 Mo
+ * (erreur 413) et Next.js limite les Server Actions à 1 Mo par défaut (relevé à 4,5 Mo
+ * dans next.config.ts). 4 Mo laisse la marge nécessaire à l'encodage du formulaire.
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_UPLOAD_ERROR = "Fichier trop volumineux (max 4 Mo).";
+
+/** Vérifie la taille des fichiers d'un formulaire AVANT l'envoi (côté navigateur) :
+ * au-delà de la limite, la requête serait rejetée avant d'atteindre l'action serveur. */
+export function uploadTooLarge(formData: FormData): string | null {
+  for (const value of formData.values()) {
+    if (typeof value !== "string" && value.size > MAX_UPLOAD_BYTES) return MAX_UPLOAD_ERROR;
+  }
+  return null;
+}
+
 export const DAY_TYPE_LABELS: Record<DayType, string> = {
   normal: "Normal",
   conge: "Congé",

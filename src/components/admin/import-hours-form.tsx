@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { analyzeImportAction, confirmImportAction, ImportPreviewRow, AnalyzeImportResult } from "@/lib/actions/import";
 import { cn } from "@/lib/utils";
+import { uploadTooLarge } from "@/lib/constants";
 
 const CSV_HEADER = "email,date,type_jour,heure_debut,heure_fin,pause_minutes,mode,taches,remarques";
 const CSV_EXAMPLE = `${CSV_HEADER}
@@ -58,6 +59,12 @@ export function ImportHoursForm({ employees }: { employees: EmployeeOption[] }) 
     setFinalResult(null);
     setPreview(null);
     const formData = new FormData(e.currentTarget);
+    const tooLarge = uploadTooLarge(formData);
+    if (tooLarge) {
+      setPending(false);
+      setAnalyzeError(tooLarge);
+      return;
+    }
     const res = await analyzeImportAction(formData);
     setPending(false);
     if ("error" in res) {
