@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Trash2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/ocr-import";
 import { OcrDraftRow } from "@/lib/types";
 import { uploadTooLarge } from "@/lib/constants";
+import { shrinkImageForUpload } from "@/lib/image-resize";
 
 interface EmployeeOption {
   id: string;
@@ -21,13 +22,18 @@ interface EmployeeOption {
   email: string;
 }
 
+const ENGINE_LABELS = { claude: "Lu par l'IA (Claude)", google_vision: "Lu par OCR (Google Vision)", tesseract: "Lu par OCR classique" } as const;
+
 export function OcrImportForm({
   employees,
   initialDrafts,
+  aiEnabled,
 }: {
   employees: EmployeeOption[];
   initialDrafts: OcrDraftRow[];
+  aiEnabled: boolean;
 }) {
+  const [lastScan, setLastScan] = React.useState<{ engine: keyof typeof ENGINE_LABELS; warning?: string; rows: number } | null>(null);
   const [pending, setPending] = React.useState(false);
   const [analyzeError, setAnalyzeError] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<OcrDraftRow[]>(initialDrafts);
@@ -44,6 +50,10 @@ export function OcrImportForm({
     setAnalyzeError(null);
     setFinalResult(null);
     const formData = new FormData(e.currentTarget);
+    setLastScan(null);
+    // Les photos de téléphone sont réduites avant l'envoi (plus rapide, sous la limite de 4 Mo).
+    const original = formData.get("file");
+    if (original instanceof File && original.size > 0) formData.set("file", await shrinkImageForUpload(original));
     const tooLarge = uploadTooLarge(formData);
     if (tooLarge) {
       setPending(false);
@@ -56,6 +66,7 @@ export function OcrImportForm({
       setAnalyzeError(res.error);
       return;
     }
+    setLastScan({ engine: res.engine, warning: res.warning, rows: res.rows.length });
     setDrafts((prev) => [...res.rows, ...prev]);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -85,9 +96,14 @@ export function OcrImportForm({
       hours: fields.hours,
     };
     const res = await updateOcrDraftAction(row.id, patch);
-    if ("error" in res && res.error) return;
+    if (res.error) return;
+    // Le serveur revalide la ligne : on affiche tout de suite le nouveau statut.
     setDrafts((prev) =>
-      prev.map((d) => (d.id === row.id ? { ...d, ...fields, full_name: patch.full_name ?? d.full_name } : d))
+      prev.map((d) =>
+        d.id === row.id
+          ? { ...d, ...fields, full_name: patch.full_name ?? d.full_name, valid: res.valid ?? d.valid, issues: res.issues ?? d.issues }
+          : d
+      )
     );
   }
 
@@ -124,11 +140,41 @@ export function OcrImportForm({
 
   return (
     <div className="space-y-4">
+      {aiEnabled ? (
+        <div className="flex items-start gap-3 rounded-xl border border-sea-200 bg-sea-50 p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-sea-600 shadow-sm">
+            <Sparkles className="h-[18px] w-[18px]" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-sea-800">Lecture intelligente activée</p>
+            <p className="text-xs text-sea-700">
+              L&apos;IA lit l&apos;écriture manuscrite, comprend les feuilles à plusieurs employés, déduit l&apos;année et
+              signale ce qu&apos;elle lit mal. Vous validez chaque ligne avant qu&apos;elle ne compte.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-steel-100 text-steel-600">
+            <Sparkles className="h-[18px] w-[18px]" />
+          </span>
+          <p className="text-xs text-slate-600">
+            <span className="font-semibold text-slate-800">Lecture OCR classique.</span> Pour lire aussi l&apos;écriture
+            manuscrite et les feuilles à plusieurs employés, ajoutez la variable <code>ANTHROPIC_API_KEY</code> dans les
+            réglages du serveur.
+          </p>
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
         <h2 className="text-base font-semibold text-slate-900">Comment ça marche</h2>
         <ul className="text-xs text-slate-500 list-disc pl-5 space-y-0.5">
-          <li>Prenez une photo nette ou scannez la feuille de présence (JPG, PNG ou WEBP).</li>
-          <li>Le texte est lu automatiquement (OCR) puis les dates/heures sont extraites ligne par ligne.</li>
+          <li>Prenez une photo nette ou scannez la feuille de présence (JPG, PNG ou WEBP). Les grandes photos sont réduites automatiquement.</li>
+          <li>
+            {aiEnabled
+              ? "La feuille est lue par l'IA, ligne par ligne, et chaque ligne est associée à un employé quand son nom est écrit."
+              : "Le texte est lu automatiquement (OCR) puis les dates/heures sont extraites ligne par ligne."}
+          </li>
           <li>Chaque ligne extraite est enregistrée en brouillon : rien n&apos;est ajouté à l&apos;historique tant que vous n&apos;avez pas validé.</li>
           <li>Les lignes valides sélectionnées sont <strong>additionnées</strong> aux heures déjà existantes du même jour (et non remplacées).</li>
           <li>Une alerte est envoyée aux administrateurs à chaque scan, avec le nombre d&apos;anomalies détectées.</li>
@@ -158,9 +204,28 @@ export function OcrImportForm({
         </div>
         <Button type="submit" disabled={pending}>
           <ScanLine className="h-3.5 w-3.5" />
-          {pending ? "Analyse OCR en cours..." : "Analyser le scan"}
+          {pending ? (aiEnabled ? "Lecture de la feuille par l'IA..." : "Analyse OCR en cours...") : "Analyser le scan"}
         </Button>
         {analyzeError && <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">{analyzeError}</p>}
+        {lastScan && (
+          <div className="space-y-2">
+            <p
+              className={
+                lastScan.engine === "claude"
+                  ? "inline-flex items-center gap-1.5 rounded-full bg-sea-50 px-2.5 py-1 text-xs font-medium text-sea-700"
+                  : "inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+              }
+            >
+              {lastScan.engine === "claude" ? <Sparkles className="h-3.5 w-3.5" /> : <ScanLine className="h-3.5 w-3.5" />}
+              {ENGINE_LABELS[lastScan.engine]} · {lastScan.rows} ligne(s) à relire
+            </p>
+            {lastScan.warning && (
+              <p className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {lastScan.warning}
+              </p>
+            )}
+          </div>
+        )}
       </form>
 
       {pendingDrafts.length > 0 && (

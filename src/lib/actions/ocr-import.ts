@@ -6,11 +6,15 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/session";
 import { extractTextFromImage } from "@/lib/ocr";
 import { parseOcrTimesheetText, validateOcrRow } from "@/lib/ocr-parse";
+import { isAiReadingEnabled, readTimesheetWithClaude, toParsedLines, AiParsedLine } from "@/lib/ai-timesheet";
+import { matchEmployeeByName } from "@/lib/name-match";
+import { nowInAppTimeZone } from "@/lib/date";
 import { notifyAdminsOcrScan } from "@/lib/notifications";
 import {
   createDocument,
   createOcrDraftRows,
   findProfileById,
+  listEmployees,
   listOcrDrafts,
   updateOcrDraft,
   setOcrDraftStatus,
@@ -26,8 +30,10 @@ export interface OcrAnalyzeResult {
   success: true;
   batch_id: string;
   rows: OcrDraftRow[];
-  engine: "google_vision" | "tesseract";
+  engine: "claude" | "google_vision" | "tesseract";
   rawText: string;
+  /** Message à afficher quand la lecture par IA a échoué et que l'OCR classique a pris le relais. */
+  warning?: string;
 }
 
 /**
@@ -55,8 +61,36 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const { text, engine } = await extractTextFromImage(buffer);
-  const parsedLines = parseOcrTimesheetText(text);
+  const employees = (await listEmployees()).filter((e) => e.active);
+
+  // 1. Lecture par IA (Claude) si une clé est configurée ; 2. sinon, ou en cas d'échec, OCR classique.
+  let engine: OcrAnalyzeResult["engine"];
+  let text: string;
+  let warning: string | undefined;
+  let parsedLines: (Omit<AiParsedLine, "employee_name" | "confidence"> & Partial<AiParsedLine>)[] | null = null;
+  let sheetEmployeeName = "";
+
+  if (isAiReadingEnabled()) {
+    try {
+      const ai = await readTimesheetWithClaude(buffer, file.type, {
+        today: nowInAppTimeZone().date,
+        employeeNames: employees.map((e) => e.full_name),
+      });
+      parsedLines = toParsedLines(ai);
+      sheetEmployeeName = ai.employee_name;
+      engine = "claude";
+      text = ai.rows.map((r) => r.raw_text).join("\n") + (ai.notes ? `\n\nRemarques de l'IA : ${ai.notes}` : "");
+    } catch (err) {
+      console.error("[ocr] lecture IA impossible, repli sur l'OCR classique :", err);
+      warning = "La lecture par IA n'a pas abouti : les lignes ci-dessous viennent de l'OCR classique, vérifiez-les avec attention.";
+    }
+  }
+  if (!parsedLines) {
+    const ocr = await extractTextFromImage(buffer);
+    engine = ocr.engine;
+    text = ocr.text;
+    parsedLines = parseOcrTimesheetText(ocr.text);
+  }
 
   if (parsedLines.length === 0) {
     return {
@@ -67,6 +101,7 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
 
   // Le document original est conservé (photo/scan) pour que l'admin puisse le comparer
   // aux lignes extraites pendant la relecture, s'il est déjà associé à un employé.
+  const engineLabel = { claude: "lecture IA Claude", google_vision: "Google Vision", tesseract: "Tesseract local" }[engine!];
   const document = defaultProfile
     ? await createDocument({
         profile_id: defaultProfile.id,
@@ -75,32 +110,38 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
         size: file.size,
         buffer,
         category: "employe",
-        note: `Scan OCR (${engine === "google_vision" ? "Google Vision" : "Tesseract local"})`,
+        note: `Scan de feuille de présence (${engineLabel})`,
       })
     : null;
 
+  const sheetMatch = sheetEmployeeName ? matchEmployeeByName(employees, sheetEmployeeName) : null;
   const batchId = generateId();
   const toCreate = parsedLines.map((row) => {
-    const profile_id = defaultProfile?.id ?? null;
-    const { valid, issues } = validateOcrRow({
+    // Priorité : l'employé choisi par l'admin, puis le nom lu sur la ligne, puis le nom de la feuille.
+    const rowMatch = row.employee_name ? matchEmployeeByName(employees, row.employee_name) : null;
+    const profile = defaultProfile ?? rowMatch ?? sheetMatch;
+    const profile_id = profile?.id ?? null;
+    const { issues } = validateOcrRow({
       entry_date: row.entry_date,
       start_time: row.start_time,
       end_time: row.end_time,
       hours: row.hours,
       profile_id,
     });
+    if (!profile && row.employee_name) issues.push(`Nom lu « ${row.employee_name} » : aucun employé correspondant, à choisir.`);
+    if (row.confidence === "low") issues.push("Lecture incertaine : comparez avec la photo avant de valider.");
     return {
       batch_id: batchId,
       document_id: document?.id ?? null,
       profile_id,
-      full_name: defaultProfile?.full_name ?? null,
+      full_name: profile?.full_name ?? null,
       entry_date: row.entry_date,
       start_time: row.start_time,
       end_time: row.end_time,
       break_minutes: row.break_minutes,
       hours: row.hours,
       raw_line: row.raw_line,
-      valid,
+      valid: issues.length === 0,
       issues,
     };
   });
@@ -118,7 +159,7 @@ export async function analyzeOcrScanAction(formData: FormData): Promise<{ error:
   );
 
   revalidatePath("/admin/ocr-import");
-  return { success: true, batch_id: batchId, rows: created, engine, rawText: text };
+  return { success: true, batch_id: batchId, rows: created, engine: engine!, rawText: text!, warning };
 }
 
 export async function listOcrDraftsAction(): Promise<OcrDraftRow[]> {
@@ -137,7 +178,7 @@ export async function updateOcrDraftAction(
     end_time?: string | null;
     hours?: number;
   }
-): Promise<{ error?: string; success?: true }> {
+): Promise<{ error?: string; success?: true; valid?: boolean; issues?: string[] }> {
   await requireAdmin();
 
   const draft = await getOcrDraftById(id);
@@ -154,7 +195,7 @@ export async function updateOcrDraftAction(
 
   await updateOcrDraft(id, { ...fields, valid, issues });
   revalidatePath("/admin/ocr-import");
-  return { success: true };
+  return { success: true, valid, issues };
 }
 
 export interface ConfirmOcrDraftsSummary {
