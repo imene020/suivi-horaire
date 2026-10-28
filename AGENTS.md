@@ -29,8 +29,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Email notifications (`src/lib/mail.ts`, nodemailer over SMTP). If `SMTP_HOST` is missing, emails are only logged to the console:
   - `SMTP_HOST`, `SMTP_PORT` (default 587, 465 = TLS implicit), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (e.g. `"Suivi Horaire <no-reply@example.com>"`).
 
+- `ANTHROPIC_API_KEY` (optional): enables AI reading of scanned timesheets (`src/lib/ai-timesheet.ts`, Messages API via fetch, structured outputs with `output_config.format`; forced `tool_choice` is rejected by Sonnet 5.5). Optional `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`), `ANTHROPIC_BASE_URL`, `ANTHROPIC_VERSION`. Falls back to classic OCR on any error.
+
+## Design
+- Brand: steel greys from the ELENI logo (`steel-*` tokens in `globals.css`) + one accent, Sidi Bou Said blue (`sea-*`), reserved for live/active states (clocked in, progress, links, AI). Buttons: `default` = steel, `accent` = blue. Clocking out is not `destructive`.
+- Digits that line up use the `tabular` class; French formatting for numbers (`toLocaleString("fr-FR")`).
+
 ## Business rules
 - `computeDayHours` (`src/lib/hours.ts`): congé/maladie = standard weekday hours; férié payé = standard hours + worked hours if the employee punched; férié non payé/repos = 0 paid hours, worked hours are converted into leave (recovery) days by `countRecoveryDays` (`src/lib/leaves.ts`). Covered by `tests/hours.test.ts`.
+- "Points à vérifier" (`detectAnomalies`) and the payroll export are pure functions with tests; the admin overview and `/api/exports/payroll` only fetch data and call them.
 - Imports (CSV/Excel and OCR) ADD hours to the existing day. CSV/Excel: `isAlreadyImported` skips a row identical to one already imported so re-importing a file doesn't double hours. OCR: a draft can be confirmed only once (`status = 'pending'`), but scanning the same sheet twice creates new drafts — the reviewer must reject them.
 - Punching on a férié/repos day keeps the day type (`punchIn` in `src/lib/queries.ts`); marking a day as férié/repos keeps existing punch times (`bulkSetDayType`).
 - Emails are sent with `after()` from server actions: new non-working day (to all employees), leave request decision (to the employee), new leave request (to admins).

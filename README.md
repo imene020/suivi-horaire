@@ -59,8 +59,10 @@ TEST_DATABASE_URL=postgresql://postgres@localhost:5432/suivi_test npm test
 ## Fonctionnalités
 
 - **Employé** : pointage (arrivée, pause, départ, présentiel/télétravail), historique des heures, résumé hebdomadaire vs objectif, demandes de congé/maladie, tâches du jour, documents, calendrier, messagerie, réunions.
-- **Admin RH** : gestion des employés et des comptes, validation des congés, jours fériés/repos (import des fériés tunisiens), correction des heures, fiches de paie, réunions (comptes rendus, pièces jointes), annonces, import d'heures depuis CSV/Excel ou par photo de feuille papier (OCR, avec relecture avant validation).
-- **Comptable** : consultation des heures et des salaires.
+- **Admin RH** : gestion des employés et des comptes, validation des congés, jours fériés/repos (import des fériés tunisiens), correction des heures, fiches de paie, réunions (comptes rendus, pièces jointes), annonces, import d'heures depuis CSV/Excel ou par photo de feuille papier (avec relecture avant validation).
+  - **Vue d'ensemble** : qui est là aujourd'hui (bureau, télétravail, pause, absents) et **Points à vérifier** : détection automatique, sur 30 jours, des départs non pointés, heures payées incohérentes (ex. import en double), journées anormalement longues, jours ouvrés sans aucun pointage, arrivées inhabituelles (comparées aux habitudes de chaque employé : médiane et écart absolu médian) et soldes de congé dépassés (`src/lib/anomalies.ts`).
+  - **Lecture des feuilles par IA** : avec `ANTHROPIC_API_KEY`, l'import par scan utilise Claude (vision) : écriture manuscrite, feuilles à plusieurs employés (noms rapprochés des comptes), année déduite, lignes douteuses signalées. Sans clé, ou en cas d'erreur, l'OCR classique prend le relais (`src/lib/ai-timesheet.ts`).
+- **Comptable** : consultation des heures et des salaires, et **export de paie Excel** (aussi pour la RH) : synthèse par employé, détail jour par jour et points à vérifier, prêt à imprimer (`/api/exports/payroll`).
 
 ## Règles de calcul (`src/lib/hours.ts`, `src/lib/leaves.ts`)
 
